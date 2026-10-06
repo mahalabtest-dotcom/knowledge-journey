@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Admin Dashboard</title>
+<link rel="stylesheet" href="/shared/theme.css" />
+<style>
+  .wrap { max-width: 480px; margin: 0 auto; padding: 1em 1em 3em; }
+  .summary-row { display: flex; gap: 0.75em; margin-bottom: 1.25em; }
+  .stat-card { flex: 1; min-width: 0; text-align: center; padding: 1em 0.5em; }
+  .stat-card .num { font-size: 1.6rem; font-weight: 800; color: var(--forest-deep); line-height: 1.1; }
+  .stat-card .muted { font-size: 0.78rem; }
+
+  #searchBox { margin-bottom: 1em; }
+
+  .p-card { padding: 1em; margin-bottom: 0.75em; }
+  .p-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5em; }
+  .p-name { font-weight: 700; color: var(--forest-deep); font-size: 1.05rem; }
+  .p-email { font-size: 0.82rem; color: #6b6250; word-break: break-all; }
+
+  .progress-bar { background: var(--parchment-dark); border-radius: 999px; height: 8px; width: 100%; overflow: hidden; margin: 0.7em 0 0.5em; }
+  .progress-fill { background: var(--gold); height: 100%; }
+
+  .milestone-dots { display: flex; gap: 6px; flex-wrap: wrap; }
+  .mdot-wrap { display: flex; align-items: center; gap: 0.3em; font-size: 0.75rem; color: #8b8264; }
+  .mdot { width: 11px; height: 11px; border-radius: 50%; background: var(--parchment-dark); flex: 0 0 auto; }
+  .mdot.done { background: var(--forest); }
+
+  .empty-state { text-align: center; padding: 2.5em 1em; color: #8b8264; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Event Dashboard</h1>
+
+  <div class="summary-row">
+    <div class="card stat-card"><div class="num" id="statTotal">-</div><div class="muted">Registered</div></div>
+    <div class="card stat-card"><div class="num" id="statFinished">-</div><div class="muted">Finished</div></div>
+    <div class="card stat-card"><div class="num" id="statAvg">-</div><div class="muted">Avg. stops</div></div>
+  </div>
+
+  <input type="text" id="searchBox" placeholder="Search by name or email" />
+
+  <div id="rows"></div>
+</div>
+
+<script src="/admin/admin-common.js"></script>
+<script>
+  let allParticipants = [];
+  let milestoneCols = []; // [{id, title}]
+
+  function render(list) {
+    const rows = document.getElementById('rows');
+    rows.innerHTML = '';
+
+    if (list.length === 0) {
+      rows.innerHTML = '<div class="card empty-state">No attendees match yet.</div>';
+      return;
+    }
+
+    list.forEach((p) => {
+      const pct = p.total ? Math.round((p.completed / p.total) * 100) : 0;
+      const dots = p.milestoneStatus
+        .filter((m) => milestoneCols.some((c) => c.id === m.id))
+        .map((m) => `<div class="mdot ${m.done ? 'done' : ''}" title="${escapeHtml(m.title)}"></div>`)
+        .join('');
+
+      const card = document.createElement('div');
+      card.className = 'card p-card';
+      card.innerHTML = `
+        <div class="p-top">
+          <div>
+            <div class="p-name">${escapeHtml(p.name)}</div>
+            <div class="p-email">${escapeHtml(p.email)}</div>
+          </div>
+          ${p.finishedAt ? '<span class="badge gold">Finished</span>' : '<span class="badge forest">In progress</span>'}
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+        <div class="mdot-wrap">
+          <div class="milestone-dots">${dots}</div>
+          <span>${p.completed} / ${p.total} checkpoints</span>
+        </div>
+      `;
+      rows.appendChild(card);
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  async function load() {
+    const res = await fetch('/api/admin/participants');
+    if (res.status === 401) { window.location.href = '/admin/login'; return; }
+    const data = await res.json();
+    allParticipants = data.participants;
+    milestoneCols = data.milestones
+      .filter((m) => m.order_index > 0 && m.order_index < data.milestones.length - 1)
+      .map((m) => ({ id: m.id, title: m.title }));
+
+    document.getElementById('statTotal').textContent = allParticipants.length;
+    document.getElementById('statFinished').textContent = allParticipants.filter((p) => p.finishedAt).length;
+    const avg = allParticipants.length
+      ? (allParticipants.reduce((s, p) => s + p.completed, 0) / allParticipants.length).toFixed(1)
+      : '0';
+    document.getElementById('statAvg').textContent = avg;
+
+    const q = document.getElementById('searchBox').value.toLowerCase();
+    render(q ? allParticipants.filter((p) => p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q)) : allParticipants);
+  }
+
+  document.getElementById('searchBox').addEventListener('input', (e) => {
+    const q = e.target.value.toLowerCase();
+    render(allParticipants.filter((p) => p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q)));
+  });
+
+  (async () => {
+    if (!(await requireAdminAuth())) return;
+    renderAdminNav('dashboard');
+    await load();
+    setInterval(load, 6000);
+  })();
+</script>
+</body>
+</html>

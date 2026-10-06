@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Admin Login</title>
+<link rel="stylesheet" href="/shared/theme.css" />
+</head>
+<body>
+<div class="page" style="max-width:380px;">
+  <h1 class="center">Event Staff Login</h1>
+  <div class="card">
+    <form id="loginForm">
+      <label for="password" style="font-weight:700; display:block; margin-bottom:0.4em;">Password</label>
+      <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" required />
+      <div id="err" class="error-text" style="display:none; margin-top:0.75em;"></div>
+      <button type="submit" style="width:100%; margin-top:1em;">Log In</button>
+    </form>
+  </div>
+</div>
+<script>
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = document.getElementById('err');
+    err.style.display = 'none';
+    const password = document.getElementById('password').value;
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Login failed');
+      window.location.href = '/admin/dashboard';
+    } catch (e2) {
+      err.textContent = e2.message;
+      err.style.display = 'block';
+    }
+  });
+</script>
+</body>
+</html>

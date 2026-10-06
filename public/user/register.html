@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Start your journey</title>
+<link rel="stylesheet" href="/shared/theme.css" />
+<style>
+  .wrap { max-width: 480px; margin: 0 auto; padding: 26px 14px 40px; }
+  .sheet-shadow { filter: drop-shadow(0 10px 14px rgba(34, 28, 82, 0.16)); }
+  .sheet { background: var(--paper); padding: 22px 20px 46px; }
+  #heroBook { display: block; width: 170px; height: auto; margin: 0 auto 6px; }
+  .festival { font-weight: 800; color: var(--maroon); font-size: 1.15rem; line-height: 1.25; text-align: center; }
+  .sheet h1 { font-size: 1.8rem; text-align: center; margin: 14px 0 4px; }
+  .lede { margin: 0 0 18px; text-align: center; }
+  form { display: flex; flex-direction: column; gap: 14px; }
+  label { font-weight: 700; font-size: 0.9rem; margin-bottom: 4px; display: block; }
+  #submitBtn { margin-top: 6px; }
+</style>
+</head>
+<body>
+<svg class="backdrop" id="backdrop" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"></svg>
+
+<div class="wrap">
+  <div class="sheet-shadow">
+    <div class="sheet" id="sheet">
+      <svg id="heroBook" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"></svg>
+      <div class="festival">Reading &amp; Knowledge Festival</div>
+      <h1>Start your journey</h1>
+      <p class="lede">Add your name to get your own journey. Every stop you visit at the festival opens a new book.</p>
+      <form id="regForm">
+        <div>
+          <label for="name">Your name</label>
+          <input type="text" id="name" name="name" placeholder="Jordan Rivera" autocomplete="name" required />
+        </div>
+        <div>
+          <label for="email">Your email</label>
+          <input type="email" id="email" name="email" placeholder="you@example.com" autocomplete="email" required />
+        </div>
+        <div id="formError" class="error-text" style="display:none;"></div>
+        <button type="submit" id="submitBtn">Start my journey</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="/shared/bookpath.js"></script>
+<script>
+  const STORAGE_KEY = 'event_journey_token';
+
+  // If already registered on this device, skip straight to the journey.
+  if (localStorage.getItem(STORAGE_KEY)) {
+    window.location.href = '/journey';
+  }
+
+  BookPath.backdrop(document.getElementById('backdrop'));
+  BookPath.tornEdge(document.getElementById('sheet'));
+  BookPath.openBookArt(document.getElementById('heroBook'), 'coral');
+
+  const form = document.getElementById('regForm');
+  const errorBox = document.getElementById('formError');
+  const submitBtn = document.getElementById('submitBtn');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorBox.style.display = 'none';
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner"></span> Starting…';
+
+    const name = document.getElementById('name').value.trim();
+    const email = document.getElementById('email').value.trim();
+
+    try {
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Something went wrong. Try again.');
+      localStorage.setItem(STORAGE_KEY, data.token);
+      window.location.href = '/journey';
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.style.display = 'block';
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Start my journey';
+    }
+  });
+</script>
+</body>
+</html>

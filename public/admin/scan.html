@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Scan Check-in</title>
+<link rel="stylesheet" href="/shared/theme.css" />
+<style>
+  .wrap { max-width: 520px; margin: 0 auto; padding: 1.25em; }
+  select {
+    width: 100%; font-size: 1rem; padding: 0.75em 1em; border-radius: 12px;
+    border: 2px solid var(--parchment-dark); background: #fffdf6; margin-bottom: 1em;
+  }
+  #videoWrap {
+    position: relative; width: 100%; aspect-ratio: 1 / 1; border-radius: var(--radius);
+    overflow: hidden; background: #1a2419; border: 3px solid var(--parchment-dark);
+  }
+  #video { width: 100%; height: 100%; object-fit: cover; }
+  #scanFrame {
+    position: absolute; inset: 12%; border: 3px solid var(--gold); border-radius: 12px;
+    box-shadow: 0 0 0 2000px rgba(0,0,0,0.25);
+  }
+  #resultBox { margin-top: 1em; min-height: 70px; }
+  #resultBox.success { border-color: var(--forest); }
+  #resultBox.error { border-color: var(--ember); }
+  #resultBox.already { border-color: var(--gold); }
+  .scan-toggle { display: flex; gap: 0.5em; margin-bottom: 1em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Scan Check-in</h1>
+  <p class="muted">Choose the checkpoint you're staffing, then scan an attendee's personal QR code to check them off.</p>
+
+  <label for="milestoneSelect" style="font-weight:700;">Checkpoint</label>
+  <select id="milestoneSelect"></select>
+
+  <div class="scan-toggle">
+    <button id="startBtn">Start Camera</button>
+    <button class="secondary" id="stopBtn" disabled>Stop Camera</button>
+  </div>
+
+  <div id="videoWrap" style="display:none;">
+    <video id="video" playsinline muted></video>
+    <div id="scanFrame"></div>
+  </div>
+  <canvas id="canvas" style="display:none;"></canvas>
+
+  <div id="resultBox" class="card" style="display:none;"></div>
+
+  <div class="card" style="margin-top:1.25em;">
+    <strong>Trouble with the camera?</strong>
+    <p class="muted" style="margin:0.4em 0 0;">
+      Camera access needs HTTPS (or localhost) and browser permission. If scanning
+      keeps failing, you can also type in the attendee's code manually below.
+    </p>
+    <div style="display:flex; gap:0.5em; margin-top:0.75em;">
+      <input type="text" id="manualToken" placeholder="Paste attendee code" />
+      <button class="secondary" id="manualBtn">Check In</button>
+    </div>
+  </div>
+</div>
+
+<script src="/vendor/jsQR.js"></script>
+<script src="/admin/admin-common.js"></script>
+<script>
+  let milestones = [];
+  let stream = null;
+  let scanning = false;
+  let lastScannedToken = null;
+  let lastScannedAt = 0;
+
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const resultBox = document.getElementById('resultBox');
+  const videoWrap = document.getElementById('videoWrap');
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const milestoneSelect = document.getElementById('milestoneSelect');
+
+  function showResult(cls, html) {
+    resultBox.className = 'card ' + cls;
+    resultBox.style.display = 'block';
+    resultBox.innerHTML = html;
+  }
+
+  async function loadMilestones() {
+    const res = await fetch('/api/admin/milestones');
+    if (res.status === 401) { window.location.href = '/admin/login'; return; }
+    const data = await res.json();
+    milestones = data.milestones.filter(m => m.order_index > 0 && m.order_index < data.milestones.length - 1);
+    // ⁧...⁩ isolates the Arabic as right-to-left, so its
+    // punctuation (e.g. a closing bracket) stays on the correct side
+    milestoneSelect.innerHTML = milestones.map((m, i) => {
+      const ar = m.titleAr ? ` · ⁧${m.titleAr}⁩` : '';
+      return `<option value="${escapeHtml(m.id)}">${i + 1}. ${escapeHtml(m.title)}${escapeHtml(ar)}</option>`;
+    }).join('');
+    const saved = localStorage.getItem('admin_selected_milestone');
+    if (saved && milestones.some(m => m.id === saved)) milestoneSelect.value = saved;
+  }
+  milestoneSelect.addEventListener('change', () => {
+    localStorage.setItem('admin_selected_milestone', milestoneSelect.value);
+  });
+
+  async function checkIn(token) {
+    const milestoneId = milestoneSelect.value;
+    if (!milestoneId) { showResult('error', 'Choose a checkpoint first.'); return; }
+    try {
+      const res = await fetch('/api/admin/checkin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, milestoneId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Check-in failed');
+      const name = data.participant.name;
+      if (data.alreadyDone) {
+        showResult('already', `<strong>${escapeHtml(name)}</strong> already has this checkpoint. ✔️`);
+      } else {
+        showResult('success', `<strong>✅ ${escapeHtml(name)}</strong> checked in at ${escapeHtml(milestoneSelect.options[milestoneSelect.selectedIndex].text)}!`);
+      }
+    } catch (e) {
+      showResult('error', `⚠️ ${escapeHtml(e.message)}`);
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  async function startCamera() {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      video.srcObject = stream;
+      await video.play();
+      videoWrap.style.display = 'block';
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      scanning = true;
+      requestAnimationFrame(tick);
+    } catch (e) {
+      showResult('error', 'Could not access the camera. You can use the manual code entry below instead.');
+    }
+  }
+
+  function stopCamera() {
+    scanning = false;
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    videoWrap.style.display = 'none';
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+  }
+
+  function tick() {
+    if (!scanning) return;
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
+      if (code && code.data) {
+        const now = Date.now();
+        if (code.data !== lastScannedToken || now - lastScannedAt > 3000) {
+          lastScannedToken = code.data;
+          lastScannedAt = now;
+          checkIn(code.data.trim());
+        }
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+
+  startBtn.addEventListener('click', startCamera);
+  stopBtn.addEventListener('click', stopCamera);
+  document.getElementById('manualBtn').addEventListener('click', () => {
+    const val = document.getElementById('manualToken').value.trim();
+    if (val) checkIn(val);
+  });
+
+  (async () => {
+    if (!(await requireAdminAuth())) return;
+    renderAdminNav('scan');
+    await loadMilestones();
+  })();
+</script>
+</body>
+</html>

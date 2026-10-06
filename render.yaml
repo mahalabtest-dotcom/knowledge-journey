@@ -1,0 +1,22 @@
+# Render Blueprint: one free web service. Render asks for the values marked
+# sync: false when the Blueprint is first created (see README.md, "Hosting").
+services:
+  - type: web
+    name: knowledge-journey
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/config
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false

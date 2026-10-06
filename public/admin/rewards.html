@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Rewards</title>
+<link rel="stylesheet" href="/shared/theme.css" />
+<style>
+  .wrap { max-width: 480px; margin: 0 auto; padding: 1em 1em 3em; }
+  section { margin-bottom: 1.75em; }
+  section h2 { font-size: 1.1rem; margin-bottom: 0.15em; }
+  .section-sub { margin-bottom: 0.9em; }
+
+  .reward-row { padding: 1em; margin-bottom: 0.7em; }
+  .reward-row .rank-pill {
+    display: inline-block; font-weight: 800; font-size: 0.78rem;
+    padding: 0.2em 0.7em; border-radius: 999px; margin-bottom: 0.6em;
+    background: var(--gold-light); color: #4a3410;
+  }
+  .reward-row label { display: block; font-size: 0.78rem; font-weight: 700; color: #6b6250; margin: 0.6em 0 0.25em; }
+  .reward-row input, .reward-row textarea {
+    width: 100%; font-family: inherit; font-size: 0.95rem;
+    padding: 0.6em 0.8em; border-radius: 10px; border: 2px solid var(--parchment-dark);
+    background: #fffdf6; color: var(--ink);
+  }
+  .reward-row textarea { resize: vertical; min-height: 2.4em; }
+  .row-actions { display: flex; gap: 0.5em; margin-top: 0.8em; align-items: center; }
+  .row-actions button { padding: 0.5em 1.1em; font-size: 0.85rem; }
+  .save-ok { font-size: 0.8rem; color: var(--forest); font-weight: 700; opacity: 0; transition: opacity 0.2s; }
+  .save-ok.show { opacity: 1; }
+  .save-err { font-size: 0.8rem; color: var(--maroon); font-weight: 700; }
+
+  .draw-box { margin-top: 0.7em; }
+  .pool-status { font-size: 0.9rem; margin: 0; }
+  .pool-status + .pool-status { margin-top: 0.4em; }
+
+  .list-title { font-size: 0.95rem; margin: 1.1em 0 0.5em; }
+  .winner-row {
+    display: flex; justify-content: space-between; align-items: center; gap: 0.6em;
+    padding: 0.75em 0; border-bottom: 1px solid var(--parchment-dark);
+  }
+  .winner-row:last-child { border-bottom: none; }
+  .winner-name { font-weight: 700; color: var(--forest-deep); }
+  .winner-sub { font-size: 0.78rem; color: #8b8264; }
+  .winner-reward { font-size: 0.82rem; font-weight: 700; text-align: right; color: #6b4a14; }
+  .empty-state { text-align: center; padding: 1.5em 1em; color: #8b8264; font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Rewards</h1>
+  <p class="muted section-sub">Prizes go by finishing order. Set them up before the event; everything else happens by itself as people finish.</p>
+
+  <section>
+    <h2>Lucky draw</h2>
+    <p class="muted section-sub">The moment someone in this group finishes, they get a random prize from what is left in the pool: one main prize, and the other prize for every other place. Each prize drawn leaves the pool.</p>
+    <div id="drawTier"></div>
+    <div class="card reward-row draw-box">
+      <p class="pool-status" id="poolStatus"></p>
+      <p class="pool-status" id="mainStatus"></p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Prize group</h2>
+    <p class="muted section-sub">Shown on the attendee's phone the moment they finish.</p>
+    <div id="otherTiers"></div>
+  </section>
+
+  <section>
+    <h2>Everyone after</h2>
+    <p class="muted section-sub" id="thanksSub">Everyone who finishes after the groups above gets a thank-you note.</p>
+    <div class="card reward-row">
+      <label for="thanksMessage">Thank-you note</label>
+      <textarea id="thanksMessage" rows="3"></textarea>
+      <div class="row-actions">
+        <button class="secondary" id="saveThanks">Save</button>
+        <span class="save-ok" id="thanksOk">Saved!</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Who finished</h2>
+    <p class="muted section-sub">Updates live as people finish.</p>
+    <div id="tierWinners"></div>
+    <h3 class="list-title" id="thanksTitle">Thank-you note</h3>
+    <div class="card" style="padding: 0.3em 1em;"><div id="thanksList"></div></div>
+  </section>
+
+  <section>
+    <h2>Before the event</h2>
+    <p class="muted section-sub">Clears every registration, check-in and prize, so the real event starts from 1st place again. Stations and prize settings are kept. This can't be undone.</p>
+    <div class="card reward-row">
+      <label for="resetConfirm">Type RESET to confirm</label>
+      <input type="text" id="resetConfirm" autocomplete="off" autocapitalize="characters" />
+      <div class="row-actions">
+        <button class="danger" id="resetBtn">Clear all registrations</button>
+        <span class="save-ok" id="resetOk">Cleared</span>
+        <span class="save-err" id="resetErr"></span>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script src="/admin/admin-common.js"></script>
+<script>
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function flashOk(el) {
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 1400);
+  }
+
+  function ordinal(n) {
+    const s = ['th', 'st', 'nd', 'rd'];
+    const v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+  }
+
+  function fmtTime(iso) {
+    if (!iso) return '';
+    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function putJson(url, body) {
+    return fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  }
+
+  async function loadRewards() {
+    const res = await fetch('/api/admin/rewards');
+    if (res.status === 401) { window.location.href = '/admin/login'; return; }
+    const data = await res.json();
+    renderTiers(data.tiers, data.mainPrize);
+    document.getElementById('thanksMessage').value = data.thanksMessage;
+  }
+
+  // The first tier (starting at rank 1) is the lucky-draw group.
+  function renderTiers(tiers, mainPrize) {
+    document.getElementById('drawTier').innerHTML = '';
+    document.getElementById('otherTiers').innerHTML = '';
+    tiers.forEach((t) => {
+      const draw = t.from_rank === 1;
+      const row = document.createElement('div');
+      row.className = 'card reward-row';
+      row.innerHTML = `
+        <span class="rank-pill">Finishers ${t.from_rank}–${t.to_rank}</span>
+        ${draw ? `
+          <label>Main prize (1 in the pool)</label>
+          <input type="text" class="t-main" value="${escapeHtml(mainPrize)}" />` : ''}
+        <label>${draw ? 'Every other place in the pool' : 'Prize'}</label>
+        <input type="text" class="t-label" value="${escapeHtml(t.label)}" />
+        <label>Description (optional)</label>
+        <textarea class="t-desc">${escapeHtml(t.description || '')}</textarea>
+        <label>How many people</label>
+        <input type="number" inputmode="numeric" min="1" class="t-count" value="${t.to_rank - t.from_rank + 1}" />
+        <div class="row-actions">
+          <button class="secondary save-tier">Save</button>
+          <span class="save-ok">Saved!</span>
+          <span class="save-err"></span>
+        </div>
+      `;
+      row.querySelector('.save-tier').addEventListener('click', async () => {
+        const err = row.querySelector('.save-err');
+        err.textContent = '';
+        let next = mainPrize;
+        if (draw) {
+          next = row.querySelector('.t-main').value.trim();
+          const r = await putJson('/api/admin/rewards/settings', { mainPrize: next });
+          if (!r.ok) { err.textContent = (await r.json()).error || 'Could not save.'; return; }
+        }
+        const res = await putJson(`/api/admin/rewards/tiers/${t.id}`, {
+          label: row.querySelector('.t-label').value.trim(),
+          description: row.querySelector('.t-desc').value,
+          count: row.querySelector('.t-count').value,
+        });
+        const data = await res.json();
+        if (!res.ok) { err.textContent = data.error || 'Could not save.'; return; }
+        // a size change moves the ranks of the tiers after this one
+        renderTiers(data.tiers, next);
+        loadWinners();
+      });
+      document.getElementById(draw ? 'drawTier' : 'otherTiers').appendChild(row);
+    });
+  }
+
+  document.getElementById('saveThanks').addEventListener('click', async () => {
+    const thanksMessage = document.getElementById('thanksMessage').value.trim();
+    if (!thanksMessage) return;
+    await putJson('/api/admin/rewards/settings', { thanksMessage });
+    flashOk(document.getElementById('thanksOk'));
+  });
+
+  function personRow(w, right) {
+    return `
+      <div class="winner-row">
+        <div>
+          <div class="winner-name">${escapeHtml(w.name)}</div>
+          <div class="winner-sub">${ordinal(w.finishRank)} · ${fmtTime(w.finishedAt)}</div>
+        </div>
+        <div class="winner-reward">${right}</div>
+      </div>`;
+  }
+
+  function listOrEmpty(rows, empty) {
+    return rows.length ? rows.join('') : `<div class="empty-state">${empty}</div>`;
+  }
+
+  async function loadWinners() {
+    const res = await fetch('/api/admin/winners');
+    if (res.status === 401) return;
+    const data = await res.json();
+
+    // lucky draw pool status
+    const group = data.tiers.find((t) => t.draw);
+    if (group) {
+      const size = group.toRank - group.fromRank + 1;
+      const drawn = group.people.filter((w) => w.prizeLabel);
+      const winner = drawn.find((w) => w.main);
+      document.getElementById('poolStatus').innerHTML =
+        `<strong>${size - drawn.length} of ${size}</strong> prizes left in the pool.`;
+      document.getElementById('mainStatus').innerHTML = winner
+        ? `🏆 The ${escapeHtml(winner.prizeLabel)} went to <strong>${escapeHtml(winner.name)}</strong> (${ordinal(winner.finishRank)}).`
+        : `The ${escapeHtml(data.mainPrize)} is still in the pool.`;
+    }
+
+    document.getElementById('tierWinners').innerHTML = data.tiers.map((t) => {
+      const prize = (w) => !t.draw ? escapeHtml(t.label)
+        : w.main ? `🏆 ${escapeHtml(w.prizeLabel)}` : escapeHtml(w.prizeLabel || t.label);
+      return `
+        <h3 class="list-title">${t.draw ? 'Lucky draw' : escapeHtml(t.label)} · finishers ${t.fromRank}–${t.toRank} (${t.people.length} of ${t.toRank - t.fromRank + 1})</h3>
+        <div class="card" style="padding: 0.3em 1em;">
+          ${listOrEmpty(t.people.map((w) => personRow(w, prize(w))), 'Nobody yet.')}
+        </div>`;
+    }).join('');
+
+    document.getElementById('thanksSub').textContent =
+      `Everyone who finishes ${ordinal(data.thanksFromRank)} or later gets a thank-you note.`;
+    document.getElementById('thanksTitle').textContent = `Thank-you note · ${ordinal(data.thanksFromRank)} onward (${data.thanks.length})`;
+    document.getElementById('thanksList').innerHTML = listOrEmpty(
+      data.thanks.map((w) => personRow(w, '<span class="muted">Thank-you note</span>')),
+      'Nobody yet.'
+    );
+  }
+
+  document.getElementById('resetBtn').addEventListener('click', async () => {
+    const input = document.getElementById('resetConfirm');
+    const err = document.getElementById('resetErr');
+    err.textContent = '';
+    const res = await fetch('/api/admin/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: input.value.trim().toUpperCase() }),
+    });
+    if (!res.ok) { err.textContent = (await res.json()).error || 'Could not clear.'; return; }
+    input.value = '';
+    flashOk(document.getElementById('resetOk'));
+    loadWinners();
+  });
+
+  (async () => {
+    if (!(await requireAdminAuth())) return;
+    renderAdminNav('rewards');
+    await loadRewards();
+    await loadWinners();
+    setInterval(loadWinners, 6000);
+  })();
+</script>
+</body>
+</html>

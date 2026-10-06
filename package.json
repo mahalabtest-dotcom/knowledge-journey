@@ -1,0 +1,21 @@
+{
+  "name": "event-journey",
+  "version": "1.0.0",
+  "description": "Two-way event journey platform: attendee map with milestones + admin QR check-in scanner",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "cookie-parser": "^1.4.6",
+    "express": "^4.19.2",
+    "qrcode": "^1.5.3",
+    "uuid": "^9.0.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

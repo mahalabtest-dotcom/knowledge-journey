@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Registration QR Poster</title>
+<link rel="stylesheet" href="/shared/theme.css" />
+<style>
+  .wrap { max-width: 560px; margin: 0 auto; padding: 1.25em; }
+  #poster {
+    text-align: center; padding: 3em 2em;
+    border: 4px solid var(--gold);
+  }
+  #poster h2 { font-size: 1.8rem; }
+  #poster img { width: 260px; height: 260px; margin: 1.5em 0; }
+  @media print {
+    body * { visibility: hidden; }
+    #poster, #poster * { visibility: visible; }
+    #poster { position: fixed; inset: 0; border: none; padding-top: 3em; }
+    .admin-nav, #printBtn, #urlNote { display: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Registration QR</h1>
+  <p class="muted">Display this on a screen or print it at the event entrance. Scanning it takes attendees straight to registration.</p>
+  <div class="card" id="poster">
+    <span class="badge gold">Scan to begin</span>
+    <h2>Start Your Journey</h2>
+    <img id="qrImg" alt="Registration QR code" />
+    <p class="muted" id="urlText"></p>
+  </div>
+  <div style="margin-top:1em; text-align:center;">
+    <button id="printBtn">Print Poster</button>
+  </div>
+  <p class="muted" id="urlNote" style="margin-top:1em;">
+    This QR points to the <strong>BASE_URL</strong> set in your <code>.env</code> file. Make sure it's an
+    address attendees' phones can actually reach (your venue wifi IP, or your deployed https URL) before the event.
+  </p>
+</div>
+<script src="/admin/admin-common.js"></script>
+<script>
+  async function load() {
+    // Use the address this page was opened on (the tunnel link, or the
+    // laptop's wifi address), so the QR follows a tunnel link that has
+    // changed. Only on the laptop itself (localhost) fall back to BASE_URL.
+    const local = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+    const base = local ? (await (await fetch('/api/config')).json()).baseUrl : location.origin;
+    const registerUrl = base.replace(/\/$/, '') + '/register';
+    document.getElementById('qrImg').src = `/api/qrcode?text=${encodeURIComponent(registerUrl)}`;
+    document.getElementById('urlText').textContent = registerUrl;
+  }
+  document.getElementById('printBtn').addEventListener('click', () => window.print());
+  (async () => {
+    if (!(await requireAdminAuth())) return;
+    renderAdminNav('poster');
+    await load();
+  })();
+</script>
+</body>
+</html>
