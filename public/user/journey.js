@@ -85,25 +85,50 @@
 
   // ---------- rewards ----------
 
-  function rewardCard({ kicker, title, label, lines, foot }) {
+  function rewardCard({ kicker, title, label, image, lines, button, foot }) {
     rewardSection.innerHTML = `
       <div class="reward">
         <div class="reward-inner">
           <div class="reward-kicker">${escapeHtml(kicker)}</div>
           <h2 class="reward-title">${escapeHtml(title)}</h2>
           ${label ? `<div class="reward-label">${escapeHtml(label)}</div>` : ''}
+          ${image ? `<img class="reward-img" src="${escapeHtml(image)}" alt="${escapeHtml(label || 'Your voucher')}" />` : ''}
           ${(lines || []).filter(Boolean).map((l) => `<p class="reward-desc">${escapeHtml(l)}</p>`).join('')}
+          ${button ? `<button id="revealBtn">${escapeHtml(button)}</button>` : ''}
         </div>
         <div class="reward-foot">${escapeHtml(foot || 'Thank you for taking part')}</div>
       </div>
     `;
+    const btn = document.getElementById('revealBtn');
+    if (btn) btn.addEventListener('click', reveal);
+  }
+
+  // The raffle-draw prize is drawn on the server the moment someone
+  // finishes; the "Reveal my prize" button only uncovers it. This phone
+  // remembers that it has been revealed, so a reload shows the prize
+  // straight away (if it forgets, the button simply shows again).
+  const REVEALED_KEY = 'event_journey_revealed';
+  function isRevealed() {
+    try { return localStorage.getItem(REVEALED_KEY) === token; } catch (e) { return false; }
+  }
+  function reveal() {
+    const btn = document.getElementById('revealBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Drawing…';
+    // a short pause, just for suspense
+    setTimeout(() => {
+      try { localStorage.setItem(REVEALED_KEY, token); } catch (e) { /* the button will just show again */ }
+      launchConfetti();
+      lastRewardKey = null;   // let the next render repaint the card
+      poll();
+    }, 1200);
   }
 
   function renderRewardSection(participant) {
     const reward = participant.reward;
     // Only rebuild when something actually changed, so the 4-second poll
     // doesn't reset the button every tick.
-    const key = JSON.stringify(reward);
+    const key = JSON.stringify(reward) + (isRevealed() ? ':revealed' : '');
     if (key === lastRewardKey) return;
     lastRewardKey = key;
 
@@ -114,29 +139,38 @@
     }
     rewardSection.style.display = 'block';
 
-    const collect = 'Show this screen at the prize desk to collect it.';
     const finished = reward.rank === 1 ? 'You are the first to finish' : `You finished ${ordinal(reward.rank)}`;
 
-    if (reward.type === 'tier') {
-      rewardCard({
-        kicker: finished,
-        title: 'You read the whole story!',
-        label: reward.label,
-        lines: [reward.description, collect],
-      });
-    } else if (reward.type === 'thanks') {
+    if (reward.type === 'thanks') {
       rewardCard({
         kicker: finished,
         title: 'Thank you!',
         lines: [reward.message],
       });
-    } else {
-      // the lucky draw: a prize drawn at random the moment they finished
+    } else if (reward.type === 'tier') {
       rewardCard({
         kicker: finished,
-        title: reward.main ? 'Lucky draw: you won the main prize!' : 'You read the whole story!',
+        title: 'You read the whole story!',
         label: reward.label,
-        lines: ['Your prize was drawn at random from the prize pool for the first finishers.', reward.description, collect],
+        image: reward.image,
+        lines: [reward.description, reward.message],
+      });
+    } else if (!isRevealed()) {
+      // the raffle draw, before the prize is uncovered
+      rewardCard({
+        kicker: finished,
+        title: 'You have entered the raffle draw!',
+        lines: ['As one of the first finishers, a prize has been drawn for you at random. Tap below to see what you won.'],
+        button: 'Reveal my prize',
+        foot: 'Good luck',
+      });
+    } else {
+      rewardCard({
+        kicker: 'Raffle draw',
+        title: reward.grand ? 'You won the grand prize!' : 'You won!',
+        label: reward.label,
+        image: reward.image,
+        lines: [reward.message],
       });
     }
   }

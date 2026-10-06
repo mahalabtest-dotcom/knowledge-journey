@@ -139,17 +139,18 @@ async function rewardView(q, p) {
   const rank = p.finish_rank;
   const tier = await getTierForRank(q, rank);
   if (!tier) return { type: 'thanks', rank, message: await getSetting(q, 'thanks_message') };
+  const message = await getSetting(q, 'collect_message');
   if (tier.from_rank !== 1) {
-    return { type: 'tier', rank, label: tier.label, description: tier.description };
+    return { type: 'tier', rank, label: tier.label, description: tier.description, image: tier.image, message };
   }
-  const main = Boolean(p.prize_main);
   return {
     type: 'draw',
     rank,
-    main,
-    // the prize name recorded when they drew it
+    grand: Boolean(p.prize_main),
+    // the prize name and picture recorded when they drew it
     label: p.prize_label || tier.label,
-    description: main ? null : tier.description,
+    image: p.prize_label ? p.prize_image : tier.image,
+    message,
   };
 }
 
@@ -176,29 +177,40 @@ async function participantView(q, p) {
   };
 }
 
-// Gives a finisher in the lucky-draw group a random prize from what is
-// left of the group's pool: one main prize (raffle_prize_label, e.g. the
-// money voucher) plus the tier's own prize for every other place. Drawing
-// without replacement like this gives every place the same 1-in-N chance
-// of the main prize, whatever order people finish in, and the main prize
-// is always gone once the group is full. Runs once per person, at the
-// moment they finish, inside a transaction, so two people finishing at the
-// same instant can't both take the last main prize.
+// The raffle-draw pool, with how many of each prize are still undrawn.
+function getPool(q) {
+  return q.all(`SELECT pp.*, MAX(0, pp.qty - (SELECT COUNT(*) FROM participants p WHERE p.prize_id = pp.id)) AS remaining
+    FROM pool_prizes pp ORDER BY order_index`);
+}
+
+// Gives a finisher in the raffle-draw group (tier 1) a random prize from
+// what is left in the pool. Every remaining place in the group holds one
+// prize - the pool's leftovers first, then the tier's own prize for any
+// places beyond the pool - and the finisher gets one of those places at
+// random. Drawing without replacement like this gives everyone in the
+// group the same chance of the grand prize whatever order they finish in,
+// and every pool prize is given out by the time the group is full. Runs
+// once per person, at the moment they finish, inside a transaction, so two
+// people finishing at the same instant can't both take the last of a prize.
 async function drawPoolPrize(tx, participantId) {
   const p = await tx.get('SELECT * FROM participants WHERE id = ?', participantId);
   const group = await getDrawGroup(tx);
   if (!p || p.prize_label || !p.finish_rank || !group || p.finish_rank > group.to_rank) return;
-  const drawn = await tx.get(
-    'SELECT COUNT(*) AS n, COALESCE(SUM(prize_main), 0) AS mains FROM participants WHERE prize_label IS NOT NULL AND finish_rank BETWEEN ? AND ?',
+  const drawn = (await tx.get(
+    'SELECT COUNT(*) AS n FROM participants WHERE prize_label IS NOT NULL AND finish_rank BETWEEN ? AND ?',
     group.from_rank, group.to_rank
-  );
-  const placesLeft = Math.max(1, group.to_rank - group.from_rank + 1 - drawn.n);
-  const mainsLeft = Math.max(0, 1 - drawn.mains);
-  const main = crypto.randomInt(placesLeft) < mainsLeft;
+  )).n;
+  const pool = await getPool(tx);
+  const prizesLeft = pool.reduce((sum, x) => sum + x.remaining, 0);
+  const placesLeft = Math.max(1, group.to_rank - group.from_rank + 1 - drawn, prizesLeft);
+  let r = crypto.randomInt(placesLeft);
+  const won = pool.find((x) => (r -= x.remaining) < 0);
   await tx.run(
-    'UPDATE participants SET prize_label = ?, prize_main = ? WHERE id = ?',
-    main ? await getSetting(tx, 'raffle_prize_label') : group.label,
-    main ? 1 : 0,
+    'UPDATE participants SET prize_id = ?, prize_label = ?, prize_image = ?, prize_main = ? WHERE id = ?',
+    won ? won.id : null,
+    won ? won.label : group.label,
+    won ? won.image : group.image,
+    won && won.grand ? 1 : 0,
     participantId
   );
 }
@@ -341,9 +353,30 @@ app.get('/api/admin/participants', requireAdmin, route(async (req, res) => {
 app.get('/api/admin/rewards', requireAdmin, route(async (req, res) => {
   res.json({
     tiers: await getTiers(db),
-    mainPrize: await getSetting(db, 'raffle_prize_label'),
+    pool: await getPool(db),
+    collectMessage: await getSetting(db, 'collect_message'),
     thanksMessage: await getSetting(db, 'thanks_message'),
   });
+}));
+
+// Renames a raffle-draw prize or changes how many are in the pool. The
+// quantity can't go below how many have already been drawn.
+app.put('/api/admin/rewards/pool/:id', requireAdmin, route(async (req, res) => {
+  const prize = (await getPool(db)).find((x) => String(x.id) === req.params.id);
+  if (!prize) return res.status(404).json({ error: 'Not found' });
+  const { label, qty } = req.body || {};
+  const drawn = prize.qty - prize.remaining;
+  let n = prize.qty;
+  if (qty !== undefined && qty !== null && qty !== '') {
+    n = parseInt(qty, 10);
+    if (!(n >= 0)) return res.status(400).json({ error: 'The quantity must be 0 or more.' });
+    if (n < drawn) return res.status(400).json({ error: `${drawn} have already been won, so the quantity can't be lower than that.` });
+  }
+  await db.run(
+    'UPDATE pool_prizes SET label = ?, qty = ? WHERE id = ?',
+    label && label.trim() ? label.trim() : prize.label, n, prize.id
+  );
+  res.json({ ok: true, pool: await getPool(db) });
 }));
 
 // Saves one tier's label, description and size, then lays every tier
@@ -383,11 +416,11 @@ app.put('/api/admin/rewards/tiers/:id', requireAdmin, route(async (req, res) => 
 }));
 
 app.put('/api/admin/rewards/settings', requireAdmin, route(async (req, res) => {
-  const { mainPrize, thanksMessage } = req.body || {};
-  if (mainPrize !== undefined && !String(mainPrize).trim()) return res.status(400).json({ error: 'A prize name is required.' });
+  const { collectMessage, thanksMessage } = req.body || {};
+  if (collectMessage !== undefined && !String(collectMessage).trim()) return res.status(400).json({ error: 'A collection message is required.' });
   if (thanksMessage !== undefined && !String(thanksMessage).trim()) return res.status(400).json({ error: 'A thank-you message is required.' });
   const put = 'UPDATE settings SET value = ? WHERE key = ?';
-  if (mainPrize !== undefined) await db.run(put, String(mainPrize).trim(), 'raffle_prize_label');
+  if (collectMessage !== undefined) await db.run(put, String(collectMessage).trim(), 'collect_message');
   if (thanksMessage !== undefined) await db.run(put, String(thanksMessage).trim(), 'thanks_message');
   res.json({ ok: true });
 }));
@@ -399,7 +432,7 @@ app.get('/api/admin/winners', requireAdmin, route(async (req, res) => {
     finishRank: p.finish_rank,
     finishedAt: p.finished_at,
     prizeLabel: p.prize_label,
-    main: Boolean(p.prize_main),
+    grand: Boolean(p.prize_main),
   });
   const between = (from, to) =>
     db.all('SELECT * FROM participants WHERE finish_rank BETWEEN ? AND ? ORDER BY finish_rank ASC', from, to);
@@ -415,7 +448,7 @@ app.get('/api/admin/winners', requireAdmin, route(async (req, res) => {
       draw: t.from_rank === 1,
       people: (await between(t.from_rank, t.to_rank)).map(finisher),
     }))),
-    mainPrize: await getSetting(db, 'raffle_prize_label'),
+    pool: await getPool(db),
     thanksFromRank: thanksFrom,
     thanks: (await between(thanksFrom, Number.MAX_SAFE_INTEGER)).map(finisher),
   });

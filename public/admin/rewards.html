@@ -33,6 +33,14 @@
   .draw-box { margin-top: 0.7em; }
   .pool-status { font-size: 0.9rem; margin: 0; }
   .pool-status + .pool-status { margin-top: 0.4em; }
+  .pool-title { font-size: 0.95rem; margin: 0 0 0.3em; }
+  .pool-row { border-top: 1px solid var(--parchment-dark); padding: 0.4em 0 0.8em; }
+  .pool-row:first-child { border-top: none; }
+  .pool-fields { display: flex; gap: 0.5em; }
+  .pool-fields > div:first-child { flex: 1; }
+  .pool-fields > div:last-child { flex: 0 0 5.5em; }
+  .pool-left { font-size: 0.78rem; color: #8b8264; margin-top: 0.3em; }
+  .grand-pill { font-size: 0.7rem; font-weight: 800; color: var(--maroon); margin-left: 0.4em; }
 
   .list-title { font-size: 0.95rem; margin: 1.1em 0 0.5em; }
   .winner-row {
@@ -52,12 +60,14 @@
   <p class="muted section-sub">Prizes go by finishing order. Set them up before the event; everything else happens by itself as people finish.</p>
 
   <section>
-    <h2>Lucky draw</h2>
-    <p class="muted section-sub">The moment someone in this group finishes, they get a random prize from what is left in the pool: one main prize, and the other prize for every other place. Each prize drawn leaves the pool.</p>
+    <h2>Raffle draw</h2>
+    <p class="muted section-sub">The moment someone in this group finishes, a prize is drawn for them at random from what is left in the pool, and it leaves the pool. Their phone shows "You have entered the raffle draw!" and a button to reveal it.</p>
     <div id="drawTier"></div>
-    <div class="card reward-row draw-box">
+    <div class="card reward-row">
+      <h3 class="pool-title">Prize pool</h3>
+      <div id="poolRows"></div>
       <p class="pool-status" id="poolStatus"></p>
-      <p class="pool-status" id="mainStatus"></p>
+      <p class="pool-status" id="grandStatus"></p>
     </div>
   </section>
 
@@ -68,7 +78,15 @@
   </section>
 
   <section>
-    <h2>Everyone after</h2>
+    <h2>Messages</h2>
+    <div class="card reward-row">
+      <label for="collectMessage">How to collect a prize (shown with every prize)</label>
+      <textarea id="collectMessage" rows="2"></textarea>
+      <div class="row-actions">
+        <button class="secondary" id="saveCollect">Save</button>
+        <span class="save-ok" id="collectOk">Saved!</span>
+      </div>
+    </div>
     <p class="muted section-sub" id="thanksSub">Everyone who finishes after the groups above gets a thank-you note.</p>
     <div class="card reward-row">
       <label for="thanksMessage">Thank-you note</label>
@@ -133,12 +151,14 @@
     const res = await fetch('/api/admin/rewards');
     if (res.status === 401) { window.location.href = '/admin/login'; return; }
     const data = await res.json();
-    renderTiers(data.tiers, data.mainPrize);
+    renderTiers(data.tiers);
+    renderPool(data.pool);
+    document.getElementById('collectMessage').value = data.collectMessage;
     document.getElementById('thanksMessage').value = data.thanksMessage;
   }
 
-  // The first tier (starting at rank 1) is the lucky-draw group.
-  function renderTiers(tiers, mainPrize) {
+  // The first tier (starting at rank 1) is the raffle-draw group.
+  function renderTiers(tiers) {
     document.getElementById('drawTier').innerHTML = '';
     document.getElementById('otherTiers').innerHTML = '';
     tiers.forEach((t) => {
@@ -147,10 +167,7 @@
       row.className = 'card reward-row';
       row.innerHTML = `
         <span class="rank-pill">Finishers ${t.from_rank}–${t.to_rank}</span>
-        ${draw ? `
-          <label>Main prize (1 in the pool)</label>
-          <input type="text" class="t-main" value="${escapeHtml(mainPrize)}" />` : ''}
-        <label>${draw ? 'Every other place in the pool' : 'Prize'}</label>
+        <label>${draw ? 'If the group is bigger than the pool, extra places get' : 'Prize'}</label>
         <input type="text" class="t-label" value="${escapeHtml(t.label)}" />
         <label>Description (optional)</label>
         <textarea class="t-desc">${escapeHtml(t.description || '')}</textarea>
@@ -165,12 +182,6 @@
       row.querySelector('.save-tier').addEventListener('click', async () => {
         const err = row.querySelector('.save-err');
         err.textContent = '';
-        let next = mainPrize;
-        if (draw) {
-          next = row.querySelector('.t-main').value.trim();
-          const r = await putJson('/api/admin/rewards/settings', { mainPrize: next });
-          if (!r.ok) { err.textContent = (await r.json()).error || 'Could not save.'; return; }
-        }
         const res = await putJson(`/api/admin/rewards/tiers/${t.id}`, {
           label: row.querySelector('.t-label').value.trim(),
           description: row.querySelector('.t-desc').value,
@@ -179,12 +190,59 @@
         const data = await res.json();
         if (!res.ok) { err.textContent = data.error || 'Could not save.'; return; }
         // a size change moves the ranks of the tiers after this one
-        renderTiers(data.tiers, next);
+        renderTiers(data.tiers);
         loadWinners();
       });
       document.getElementById(draw ? 'drawTier' : 'otherTiers').appendChild(row);
     });
   }
+
+  function renderPool(pool) {
+    const wrap = document.getElementById('poolRows');
+    wrap.innerHTML = '';
+    pool.forEach((x) => {
+      const row = document.createElement('div');
+      row.className = 'pool-row';
+      row.innerHTML = `
+        <div class="pool-fields">
+          <div>
+            <label>Prize${x.grand ? '<span class="grand-pill">GRAND PRIZE</span>' : ''}</label>
+            <input type="text" class="p-label" value="${escapeHtml(x.label)}" />
+          </div>
+          <div>
+            <label>How many</label>
+            <input type="number" inputmode="numeric" min="0" class="p-qty" value="${x.qty}" />
+          </div>
+        </div>
+        <div class="pool-left">${x.remaining} of ${x.qty} still in the pool${x.image ? ' · shown with the voucher picture' : ''}</div>
+        <div class="row-actions">
+          <button class="secondary save-prize">Save</button>
+          <span class="save-ok">Saved!</span>
+          <span class="save-err"></span>
+        </div>
+      `;
+      row.querySelector('.save-prize').addEventListener('click', async () => {
+        const err = row.querySelector('.save-err');
+        err.textContent = '';
+        const res = await putJson(`/api/admin/rewards/pool/${x.id}`, {
+          label: row.querySelector('.p-label').value.trim(),
+          qty: row.querySelector('.p-qty').value,
+        });
+        const data = await res.json();
+        if (!res.ok) { err.textContent = data.error || 'Could not save.'; return; }
+        renderPool(data.pool);
+        loadWinners();
+      });
+      wrap.appendChild(row);
+    });
+  }
+
+  document.getElementById('saveCollect').addEventListener('click', async () => {
+    const collectMessage = document.getElementById('collectMessage').value.trim();
+    if (!collectMessage) return;
+    await putJson('/api/admin/rewards/settings', { collectMessage });
+    flashOk(document.getElementById('collectOk'));
+  });
 
   document.getElementById('saveThanks').addEventListener('click', async () => {
     const thanksMessage = document.getElementById('thanksMessage').value.trim();
@@ -213,24 +271,27 @@
     if (res.status === 401) return;
     const data = await res.json();
 
-    // lucky draw pool status
+    // raffle draw pool status
     const group = data.tiers.find((t) => t.draw);
     if (group) {
       const size = group.toRank - group.fromRank + 1;
-      const drawn = group.people.filter((w) => w.prizeLabel);
-      const winner = drawn.find((w) => w.main);
-      document.getElementById('poolStatus').innerHTML =
-        `<strong>${size - drawn.length} of ${size}</strong> prizes left in the pool.`;
-      document.getElementById('mainStatus').innerHTML = winner
+      const inPool = data.pool.reduce((n, x) => n + x.qty, 0);
+      const left = data.pool.map((x) => `${escapeHtml(x.label)}: <strong>${x.remaining}</strong> of ${x.qty}`).join(' · ');
+      document.getElementById('poolStatus').innerHTML = `Still in the pool: ${left}.` + (inPool > size
+        ? ` <span class="save-err">The pool has ${inPool} prizes but only ${size} people are in the group, so some will never be won.</span>`
+        : inPool < size ? ` The other ${size - inPool} places get a ${escapeHtml(group.label)}.` : '');
+      const winner = group.people.find((w) => w.grand);
+      const grand = data.pool.find((x) => x.grand);
+      document.getElementById('grandStatus').innerHTML = winner
         ? `🏆 The ${escapeHtml(winner.prizeLabel)} went to <strong>${escapeHtml(winner.name)}</strong> (${ordinal(winner.finishRank)}).`
-        : `The ${escapeHtml(data.mainPrize)} is still in the pool.`;
+        : grand ? `The ${escapeHtml(grand.label)} hasn't been won yet.` : '';
     }
 
     document.getElementById('tierWinners').innerHTML = data.tiers.map((t) => {
       const prize = (w) => !t.draw ? escapeHtml(t.label)
-        : w.main ? `🏆 ${escapeHtml(w.prizeLabel)}` : escapeHtml(w.prizeLabel || t.label);
+        : w.grand ? `🏆 ${escapeHtml(w.prizeLabel)}` : escapeHtml(w.prizeLabel || t.label);
       return `
-        <h3 class="list-title">${t.draw ? 'Lucky draw' : escapeHtml(t.label)} · finishers ${t.fromRank}–${t.toRank} (${t.people.length} of ${t.toRank - t.fromRank + 1})</h3>
+        <h3 class="list-title">${t.draw ? 'Raffle draw' : escapeHtml(t.label)} · finishers ${t.fromRank}–${t.toRank} (${t.people.length} of ${t.toRank - t.fromRank + 1})</h3>
         <div class="card" style="padding: 0.3em 1em;">
           ${listOrEmpty(t.people.map((w) => personRow(w, prize(w))), 'Nobody yet.')}
         </div>`;
@@ -257,6 +318,7 @@
     if (!res.ok) { err.textContent = (await res.json()).error || 'Could not clear.'; return; }
     input.value = '';
     flashOk(document.getElementById('resetOk'));
+    loadRewards();
     loadWinners();
   });
 

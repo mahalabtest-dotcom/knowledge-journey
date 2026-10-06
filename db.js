@@ -119,9 +119,21 @@ CREATE TABLE IF NOT EXISTS reward_tiers (
   description TEXT
 );
 
--- Small key/value settings: raffle_prize_label (the lucky draw's one main
--- prize; the key keeps an older name), thanks_message, and
--- prize_rules (which version of the prize rules the tiers were seeded for).
+-- The raffle-draw pool for the first tier: each finisher in that tier
+-- draws one prize at random from what is left. grand = 1 marks the grand
+-- prize; image is an optional picture of the voucher (a path under public/).
+CREATE TABLE IF NOT EXISTS pool_prizes (
+  id INTEGER PRIMARY KEY,
+  label TEXT NOT NULL,
+  qty INTEGER NOT NULL,
+  grand INTEGER NOT NULL DEFAULT 0,
+  image TEXT,
+  order_index INTEGER NOT NULL
+);
+
+-- Small key/value settings: collect_message (how to collect a prize),
+-- thanks_message, and prize_rules (which version of the prize rules the
+-- tiers and pool were seeded for).
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT
@@ -135,11 +147,14 @@ CREATE TABLE IF NOT EXISTS settings (
     if (!cols.includes(name)) await db.run(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`);
   };
   await addColumn('participants', 'finish_rank', 'INTEGER');
-  // the prize a lucky-draw finisher drew (a snapshot of its name), and 1 if
-  // it was the main prize
+  // the prize a raffle-draw finisher drew: which pool prize, a snapshot of
+  // its name and picture, and 1 if it was the grand prize
+  await addColumn('participants', 'prize_id', 'INTEGER');
   await addColumn('participants', 'prize_label', 'TEXT');
+  await addColumn('participants', 'prize_image', 'TEXT');
   await addColumn('participants', 'prize_main', 'INTEGER');
   await addColumn('milestones', 'title_ar', 'TEXT');
+  await addColumn('reward_tiers', 'image', 'TEXT');
 
   // Seed default milestones only if the table is empty, so an admin's
   // edits are never overwritten on restart.
@@ -162,29 +177,35 @@ CREATE TABLE IF NOT EXISTS settings (
     });
   }
 
-  // Prize rules:
-  //   tier 1, ranks 1-10:  the lucky-draw group. Each finisher draws at
-  //                        random from a pool of one main prize
-  //                        (raffle_prize_label, "Voucher") and nine of the
-  //                        tier's own prize ("Coffee voucher"); see
-  //                        drawPoolPrize() in server.js.
-  //   tier 2, ranks 11-31: a coffee voucher each.
-  //   rank 32 onward:      a thank-you note.
-  // Seeded once. A database from the first version of the rules (1-10
-  // voucher, 11-38 coffee, then a raffle for everyone after) is switched
-  // over once, clearing any prizes drawn under those rules.
+  // Prize rules (version 3):
+  //   tier 1, ranks 1-10:  the raffle draw. Each finisher draws at random
+  //                        from the pool: 1 Money Voucher (grand prize),
+  //                        3 Petrol vouchers, 6 Coffee vouchers; see
+  //                        drawPoolPrize() in server.js. Any places beyond
+  //                        the pool get the tier's own prize.
+  //   tier 2, ranks 11-32: a coffee voucher each (with the voucher image).
+  //   rank 33 onward:      a thank-you note.
+  // Seeded once. A database seeded for an earlier version of the rules is
+  // switched over once, clearing any prizes drawn under those rules; the
+  // server then draws again for anyone already finished in tier 1.
+  const COFFEE_IMAGE = '/shared/coffee-voucher.jpg';
   const rules = await db.get("SELECT value FROM settings WHERE key = 'prize_rules'");
-  if (!rules || rules.value !== '2') {
+  if (!rules || rules.value !== '3') {
     await db.transaction(async (tx) => {
       await tx.run('DELETE FROM reward_tiers');
-      const tier = 'INSERT INTO reward_tiers (id, from_rank, to_rank, label, description) VALUES (?, ?, ?, ?, ?)';
-      await tx.run(tier, 1, 1, 10, 'Coffee voucher', null);
-      await tx.run(tier, 2, 11, 31, 'Coffee voucher', null);
-      const put = 'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)';
-      await tx.run(put, 'raffle_prize_label', 'Voucher');
-      await tx.run(put, 'thanks_message', 'Thank you for reading the whole story with us. We hope you enjoyed the festival!');
-      await tx.run(put, 'prize_rules', '2');
-      await tx.run('UPDATE participants SET prize_label = NULL, prize_main = NULL');
+      const tier = 'INSERT INTO reward_tiers (id, from_rank, to_rank, label, description, image) VALUES (?, ?, ?, ?, ?, ?)';
+      await tx.run(tier, 1, 1, 10, 'Coffee voucher', null, COFFEE_IMAGE);
+      await tx.run(tier, 2, 11, 32, 'Coffee voucher', null, COFFEE_IMAGE);
+      await tx.run('DELETE FROM pool_prizes');
+      const prize = 'INSERT INTO pool_prizes (id, label, qty, grand, image, order_index) VALUES (?, ?, ?, ?, ?, ?)';
+      await tx.run(prize, 1, 'Money Voucher', 1, 1, null, 0);
+      await tx.run(prize, 2, 'Petrol voucher', 3, 0, null, 1);
+      await tx.run(prize, 3, 'Coffee voucher', 6, 0, COFFEE_IMAGE, 2);
+      await tx.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('collect_message', 'Please visit the reception area to collect your reward.')");
+      // keep a thank-you note the admin already wrote
+      await tx.run("INSERT OR IGNORE INTO settings (key, value) VALUES ('thanks_message', 'Thank you for reading the whole story with us. We hope you enjoyed the festival!')");
+      await tx.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('prize_rules', '3')");
+      await tx.run('UPDATE participants SET prize_id = NULL, prize_label = NULL, prize_image = NULL, prize_main = NULL');
     });
   }
 }

@@ -33,36 +33,43 @@ Prizes go by finishing order:
 
 | Finished | Prize |
 |---|---|
-| 1st-10th (the lucky draw) | A random prize from a pool of 1 Voucher (the money voucher) and 9 Coffee vouchers |
-| 11th-31st (the next 21) | Coffee voucher |
-| 32nd or later | A thank-you note |
+| 1st-10th (the raffle draw) | A random prize from a pool of 1 Money Voucher (grand prize), 3 Petrol vouchers and 6 Coffee vouchers |
+| 11th-32nd (the next 22) | Coffee voucher (shown with the voucher picture) |
+| 33rd or later | A thank-you note |
 
-**The lucky draw.** The moment someone in the first 10 finishes, they get
-a random prize from whatever is left in the pool, and that prize leaves
-the pool. Their phone shows it straight away; there is no waiting and no
-button for staff to press. Drawing this way gives each of the first 10
-the same 1-in-10 chance of the Voucher, whatever order they finish in, and
-the Voucher is always won by the time the 10th person finishes.
+**The raffle draw.** The moment someone in the first 10 finishes, a prize
+is drawn for them at random from whatever is left in the pool, and it
+leaves the pool. Their phone says "You have entered the raffle draw!" with
+a **Reveal my prize** button; tapping it throws confetti and shows the
+prize (with the voucher picture for coffee) and "Please visit the
+reception area to collect your reward." Drawing this way gives each of
+the first 10 the same chance of the grand prize whatever order they finish
+in, and every prize in the pool is given out by the time the 10th person
+finishes. Nobody presses a button to draw - not attendees, not staff.
 
-People who finish 11th-31st see their Coffee voucher the moment they
-finish, and everyone after that sees the thank-you note. 1st place is
-told "You are the first to finish"; everyone else "You finished Nth".
+People who finish 11th-32nd see their Coffee voucher (with its picture and
+the same reception message) the moment they finish, and everyone after
+that sees the thank-you note. 1st place is told "You are the first to
+finish"; everyone else "You finished Nth".
 
 Set this up from `/admin/rewards` before the event:
-- **Lucky draw:** the main prize's name, the prize for every other place
-  in the pool, an optional description, and how many people are in the
-  draw. Below it, the page shows how many prizes are left in the pool and
-  who won the main prize.
+- **Raffle draw:** how many people are in the draw, and the **prize pool** -
+  each prize's name and how many (a quantity can't go below how many have
+  already been won). The page shows what is left in the pool and who won
+  the grand prize.
 - **Prize group:** the prize, an optional description, and how many
   people.
-- **Everyone after:** the thank-you note.
-- The groups stay back to back, so making the lucky draw bigger pushes
+- **Messages:** how to collect a prize, and the thank-you note.
+- The groups stay back to back, so making the raffle draw bigger pushes
   the prize group and the thank-you notes back too. Settle the sizes
   before people start finishing, because prizes are worked out from the
   current sizes.
-- **Who finished** fills in live: the lucky draw (with the prize each
+- **Who finished** fills in live: the raffle draw (with the prize each
   person drew), the prize group, and the thank-you group. Staff use these
   to hand out the physical prizes.
+
+The coffee voucher picture is `public/shared/coffee-voucher.jpg`; to use a
+different picture, replace that file (same name) and redeploy.
 
 Everything runs from one small Node/Express server. For the event it is
 hosted for free on **Render**, with its data in a free **Turso** database

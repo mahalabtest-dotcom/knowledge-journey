@@ -19,10 +19,11 @@ A two-way event platform used alongside a live, in-person event:
   start and finish, nine books in all. Every stop has an English `title`
   and an Arabic `title_ar`. Stations can be visited in any order.
 - **Rewards.** By finish rank: each of the first 10 gets a prize drawn at
-  random, the moment they finish, from a pool of 1 money voucher and 9
-  coffee vouchers (each draw leaves the pool). 11-31 get a coffee voucher
-  the instant they finish; 32 onward get a thank-you note. Nobody presses
-  a button to draw - not attendees, not staff.
+  random, the moment they finish, from a pool of 1 Money Voucher (grand
+  prize), 3 Petrol vouchers and 6 Coffee vouchers (each draw leaves the
+  pool); their phone shows "You have entered the raffle draw!" and a
+  button that reveals it. 11-32 get a coffee voucher the instant they
+  finish; 33 onward get a thank-you note.
 
 **Everything runs on phones. There is no desktop/laptop layout to
 maintain.** Every page in `public/` is designed mobile-first (narrow
@@ -71,9 +72,10 @@ public/
     dashboard.html     Live participant list (card layout, not a table)
     scan.html           Checkpoint picker + camera scanner + manual entry
     poster.html         Displays/prints the entrance registration QR
-    rewards.html         Edit the lucky draw, prize group and
-                           thank-you note, pool status, live lists of
-                           who finished and what they got
+    rewards.html         Edit the raffle draw (group size + prize
+                           pool), prize group and messages, pool
+                           status, live lists of who finished and what
+                           they got, Clear all registrations
     admin-common.js    Shared nav bar + session check, loaded by every
                          admin page except login
   shared/theme.css   Shared theme (palette, fonts, buttons, cards)
@@ -113,56 +115,77 @@ either - it auto-completes the moment every "physical" milestone
 
 Rewards tables:
 
-The prize rules:
+The prize rules (version 3, set by the user 2026-10-06):
 
 | Rank | Prize |
 |---|---|
-| 1-10, the lucky-draw group (tier 1) | a random draw, at the moment they finish, from a pool of one main prize (`raffle_prize_label`, "Voucher" - the money voucher) and tier 1's `label` ("Coffee voucher") for every other place |
-| 11-31 (tier 2) | tier 2's `label` ("Coffee voucher") |
-| 32+ | a thank-you note (`thanks_message`) |
+| 1-10, the raffle-draw group (tier 1) | a random draw, at the moment they finish, from `pool_prizes`: 1 Money Voucher (grand), 3 Petrol vouchers, 6 Coffee vouchers |
+| 11-32 (tier 2) | tier 2's `label` ("Coffee voucher"), with `image` |
+| 33+ | a thank-you note (`thanks_message`) |
 
-- `reward_tiers` - `id`, `from_rank`, `to_rank`, `label`, `description`.
-  The tier starting at rank 1 is always the lucky-draw group
-  (`getDrawGroup()`). Admin edits label, description and size
+Every prize (draw or tier) is shown with `collect_message` ("Please visit
+the reception area to collect your reward."). Coffee vouchers show the
+user's voucher artwork, `public/shared/coffee-voucher.jpg` (re-encoded
+from the PNG they supplied to keep it ~95 KB).
+
+- `reward_tiers` - `id`, `from_rank`, `to_rank`, `label`,
+  `description`, `image`. The tier starting at rank 1 is always the
+  raffle-draw group (`getDrawGroup()`); its own `label` only goes to
+  places beyond the pool. Admin edits label, description and size
   (`PUT /api/admin/rewards/tiers/:id`, body `label`, `description`,
   `count`); `saveTier()` then lays all tiers back to back from rank 1, so
   they never overlap or leave a gap.
-- `settings` - key/value: `raffle_prize_label` (the main prize; the key
-  keeps an older name), `thanks_message` (both edited via
-  `PUT /api/admin/rewards/settings`, body `mainPrize`, `thanksMessage`)
-  and `prize_rules`. On startup `db.js` reseeds the tiers and these
-  settings, and clears drawn prizes, whenever `prize_rules` isn't `'2'`.
-  That is how a database from the first version of the rules (1-10
-  voucher, 11-38 coffee, raffle for 39+) was switched over without a
-  reset. If the tiers change again, bump the version the same way.
+- `pool_prizes` - `id`, `label`, `qty`, `grand`, `image`,
+  `order_index`. `getPool()` adds `remaining` (qty minus how many
+  participants hold that `prize_id`). Admin edits label and qty
+  (`PUT /api/admin/rewards/pool/:id`); qty can't go below what's been won.
+  No add/remove from the UI.
+- `settings` - key/value: `collect_message`, `thanks_message` (both
+  edited via `PUT /api/admin/rewards/settings`, body `collectMessage`,
+  `thanksMessage`) and `prize_rules`. On startup `db.js` reseeds the
+  tiers, the pool and `collect_message`, and clears drawn prizes, whenever
+  `prize_rules` isn't `'3'` (an existing `thanks_message` is kept). That
+  is how earlier versions of the rules were switched over without a reset.
+  If the rules change again, bump the version the same way.
 - `participants.finish_rank` - set once, the moment a participant
   auto-finishes, via `claimFinishRank()`, which runs inside the check-in's
   transaction so reading "how many have finished so far" and claiming
   `that + 1` is one atomic unit. It's assigned in finish order regardless
   of which admin device scanned the final milestone.
-- `participants.prize_label` / `prize_main` - set once, by
-  `drawPoolPrize()`, which `maybeAutoFinish()` calls right after
-  `claimFinishRank()` (same transaction) for anyone in the lucky-draw
-  group. It draws without replacement: the chance of the
-  main prize is (main prizes left) / (places left in the group). That
-  gives every place the same 1-in-N chance whatever the finishing order,
-  and the last place gets it if nobody has yet. The label is a snapshot.
-  At startup, `server.js` also draws for any group finisher with no
-  prize yet (people who finished before this rule existed, or a crash
-  between finishing and drawing).
+- `participants.prize_id` / `prize_label` / `prize_image` /
+  `prize_main` (1 = grand) - set once, by `drawPoolPrize()`, which
+  `maybeAutoFinish()` calls right after `claimFinishRank()` (same
+  transaction) for anyone in the raffle-draw group. It draws without
+  replacement: the remaining places each hold one prize (the pool's
+  leftovers, then the tier label for places beyond the pool) and the
+  finisher gets a random place. That gives everyone in the group the same
+  chance at each prize whatever the finishing order, and the whole pool
+  is given out once the group is full. Label and image are snapshots. At
+  startup, `server.js` also draws for any group finisher with no prize
+  yet (after a rules switch-over, or a crash between finishing and
+  drawing).
 - Old databases may still contain `fixed_rewards`, `reward_pool`,
-  `participants.drawn_*` and `participants.raffle_won_at` /
-  `raffle_prize_label` from older prize schemes. Nothing reads them.
+  `participants.drawn_*`, `participants.raffle_won_at` /
+  `raffle_prize_label` and a `raffle_prize_label` setting from older
+  prize schemes. Nothing reads them.
 
 `rewardView()` in `server.js` turns a participant row into the `reward`
-object the frontend consumes - `{ type: 'draw', rank, main, label,
-description }`, `{ type: 'tier', rank, label, description }` or
-`{ type: 'thanks', rank, message }` - and is attached to every
+object the frontend consumes - `{ type: 'draw', rank, grand, label, image,
+message }`, `{ type: 'tier', rank, label, description, image, message }`
+or `{ type: 'thanks', rank, message }` - and is attached to every
 `participantView()` response (`/api/register`, `/api/me`). Tiers are read
 at request time, so resizing a tier mid-event changes what
 already-finished people see (a drawn prize itself never changes).
-`GET /api/admin/winners` returns `{ tiers: [{..., draw, people}],
-mainPrize, thanksFromRank, thanks }`.
+`GET /api/admin/winners` returns `{ tiers: [{..., draw, people}], pool,
+thanksFromRank, thanks }`.
+
+On the attendee's phone (`renderRewardSection()` in `journey.js`), a
+raffle-draw finisher first sees "You have entered the raffle draw!" and a
+**Reveal my prize** button. The prize is already decided on the server;
+the button only uncovers it (a short "Drawing…" pause, confetti, then the
+prize card). The phone remembers the reveal in localStorage
+(`event_journey_revealed` = the token), so a reload shows the prize
+directly; if that is lost, the button simply shows again.
 
 ## Request flow worth knowing
 
@@ -280,11 +303,12 @@ How it is built (vector SVG generated in code, no image files):
 
 ## Rewards gotchas
 
-- A lucky-draw prize is drawn **once**, the moment the person finishes,
-  and is **permanent**: no redraw, no undo, no button. Don't add a "draw"
-  button back; the user explicitly asked for the draw to happen on finish
-  so nobody waits for the group to fill.
-- If fewer than 10 people ever finish, the main prize may never be drawn
+- A raffle-draw prize is drawn **once**, by the server, the moment the
+  person finishes, and is **permanent**: no redraw, no undo. The
+  attendee's **Reveal my prize** button only uncovers it - don't turn it
+  into a real draw, and don't add a staff "draw" button; the user wants
+  the draw on finish so nobody waits for the group to fill.
+- If fewer than 10 people ever finish, the grand prize may never be drawn
   (it is only certain to go once the 10th place is filled). Shrinking the
   group's size on `/admin/rewards` before people finish is the way to
   plan for a smaller crowd.
@@ -334,10 +358,10 @@ answers 500 instead of crashing the server.
   the DB before the event, or extend the admin API.
 - No offline/service-worker support - phones must reach the server the
   whole time; there's no fallback if the connection briefly drops.
-- No way to undo or redo a lucky-draw prize from the UI - it's permanent
+- No way to undo or redo a raffle-draw prize from the UI - it's permanent
   by design (see "Rewards gotchas"). To correct a mistake, edit
-  `participants.prize_label` / `prize_main` directly in the database (keeping
-  exactly one `prize_main = 1` in the group) until someone builds an
+  `participants.prize_id` / `prize_label` / `prize_image` / `prize_main`
+  directly in the database (keeping the pool's quantities consistent) until someone builds an
   admin override.
 
 If the user asks for any of these, treat it as a real feature request,
