@@ -13,14 +13,32 @@ const path = require('path');
 const fs = require('fs');
 const { createClient } = require('@libsql/client');
 
-const remote = process.env.TURSO_DATABASE_URL;
+// Forgive the usual copy-paste slips in the hosting settings: spaces,
+// quotes, and the address without "libsql://" in front.
+const clean = (v) => (v || '').trim().replace(/^["']|["']$/g, '').trim();
+let remote = clean(process.env.TURSO_DATABASE_URL);
+if (/^eyJ/.test(remote)) {
+  // Turso tokens start with "eyJ"; addresses never do
+  throw new Error('TURSO_DATABASE_URL holds the Turso token, not the database address. Swap the two settings.');
+}
+if (remote && !/^[a-z]+:\/\//i.test(remote)) remote = 'libsql://' + remote;
 let url = remote;
 if (!remote) {
   const dataDir = path.join(__dirname, 'data');
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
   url = 'file:' + path.join(dataDir, 'event.db');
 }
-const client = createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN });
+let client;
+try {
+  client = createClient({ url, authToken: clean(process.env.TURSO_AUTH_TOKEN) || undefined });
+} catch (e) {
+  console.error(
+    '\nTURSO_DATABASE_URL is not a database address. It should look like\n' +
+    '  libsql://your-database-name-yourname.turso.io\n' +
+    '(Turso dashboard -> your database -> URL). Check it is not the token.\n'
+  );
+  throw e;
+}
 
 // get/all/run against the client or an open transaction
 function queries(ex) {
