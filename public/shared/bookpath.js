@@ -241,11 +241,12 @@
     return mascotPoint(point(lo), point(lo + 1), dir > 0 ? t : 1 - t);
   }
   // Stations can be visited in any order, so "Go here next" is the first
-  // station not visited yet. The start is always done and the finish is
-  // never scanned, so neither is ever "next".
+  // required station not visited yet (optional ones are never pointed at).
+  // The start is always done and the finish is never scanned, so neither
+  // is ever "next".
   function statesOf(milestones) {
     const n = milestones.length;
-    const next = milestones.findIndex((m, i) => i > 0 && i < n - 1 && !m.completed);
+    const next = milestones.findIndex((m, i) => i > 0 && i < n - 1 && !m.completed && !m.optional);
     return milestones.map((m, i) => (m.completed ? 'done' : i === next ? 'next' : 'locked'));
   }
   // the book visited most recently, which is not always the furthest one;
@@ -390,7 +391,7 @@
         const locked = state === 'locked';
         const ink = locked ? C.lockedText : C.navy;
 
-        const label = i === 0 ? 'Start' : i === n - 1 ? 'Finish' : `Stop ${i}`;
+        const label = i === 0 ? 'Start' : i === n - 1 ? 'Finish' : `Stop ${i}${m.optional ? ' · Optional' : ''}`;
         const en = wrap(svg, m.title, 3, { 'font-size': 17, 'font-weight': 800, 'font-family': FONT });
         // direction="rtl" keeps trailing punctuation such as ")" on the
         // correct side; with rtl, "end" is the left edge and "start" the right
@@ -403,8 +404,10 @@
         if (label !== m.title) { y += 12; rows.push({ text: label, y, size: 12.5, weight: 700, fill: locked ? C.lockedText : C.mauve }); }
         en.lines.forEach((t, k) => { y += k === 0 ? (rows.length ? en.size + 3 : en.size) : enStep; rows.push({ text: t, y, size: en.size, weight: 800, fill: ink }); });
         ar.lines.forEach((t, k) => { y += k === 0 ? ar.size + 9 : arStep; rows.push({ text: t, y, size: ar.size, weight: 700, fill: ink, rtl: true }); });
+        // unvisited optional stops still get a chip, saying what they earn
+        const chipText = state === 'done' ? 'Visited' : state === 'next' ? 'Go here next' : m.optional ? '+1 extra book' : null;
         const chipY = y + 10;
-        const top = p.y - (locked ? y + 6 : chipY + 22) / 2;
+        const top = p.y - (chipText ? chipY + 22 : y + 6) / 2;
 
         rows.forEach((r) => {
           const t = el('text', {
@@ -415,11 +418,12 @@
           t.textContent = r.text;
         });
 
-        if (!locked) {
+        if (chipText) {
           const chip = el('g', null, svg);
-          const bg = el('rect', { height: 22, rx: 8, fill: state === 'done' ? '#f1e3ea' : C.indigo }, chip);
-          const ct = el('text', { y: 15.5, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 700, fill: state === 'done' ? C.maroon : '#fff', 'font-family': FONT }, chip);
-          ct.textContent = state === 'done' ? 'Visited' : 'Go here next';
+          const soft = state !== 'next';
+          const bg = el('rect', { height: 22, rx: 8, fill: !soft ? C.indigo : locked ? C.lavSoft : '#f1e3ea' }, chip);
+          const ct = el('text', { y: 15.5, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 700, fill: !soft ? '#fff' : locked ? C.indigo : C.maroon, 'font-family': FONT }, chip);
+          ct.textContent = chipText;
           const w = Math.ceil(ct.getComputedTextLength()) + 22;
           bg.setAttribute('width', w);
           ct.setAttribute('x', w / 2);

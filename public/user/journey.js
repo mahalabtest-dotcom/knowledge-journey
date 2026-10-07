@@ -46,7 +46,7 @@
   // ---------- stops list ----------
 
   function buildList(list) {
-    const key = list.map((m) => `${m.id}:${m.title}:${m.titleAr}:${m.description}:${m.completed}`).join('|');
+    const key = list.map((m) => `${m.id}:${m.title}:${m.titleAr}:${m.description}:${m.optional}:${m.completed}`).join('|');
     if (key === lastListKey) return;
     lastListKey = key;
     milestoneList.innerHTML = '';
@@ -56,7 +56,7 @@
       row.innerHTML = `
         <div class="m-dot"><svg viewBox="0 0 14 14"><path d="M2.5 7.5 L5.5 10.5 L11.5 3.5" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         <div>
-          <div class="m-title">${escapeHtml(m.title)}</div>
+          <div class="m-title">${escapeHtml(m.title)}${m.optional ? ' <span class="m-opt">Optional · +1 book</span>' : ''}</div>
           ${m.titleAr ? `<div class="m-title-ar" dir="rtl" lang="ar">${escapeHtml(m.titleAr)}</div>` : ''}
           <div class="m-desc">${escapeHtml(m.description || '')}</div>
         </div>
@@ -192,25 +192,51 @@
   }
   toast.addEventListener('click', () => toast.classList.remove('show'));
 
+  // ---------- extra book tokens ----------
+
+  // One token per optional stop done; each is one more book to pick at the
+  // book stand. Shown only while there are unused tokens.
+  function renderTokens(tokens, list) {
+    const box = document.getElementById('tokens');
+    if (!tokens || !tokens.available) { box.style.display = 'none'; return; }
+    const stand = list.find((m) => m.bookStand);
+    const n = tokens.available;
+    box.innerHTML = `
+      <div class="tokens-count">${'🎟️'.repeat(Math.min(n, 3))}</div>
+      <div>
+        <div class="tokens-title">You have ${n} extra book token${n === 1 ? '' : 's'}</div>
+        <div class="tokens-sub">Pick ${n} more book${n === 1 ? '' : 's'} at <strong>${escapeHtml(stand ? stand.title : 'the book stand')}</strong> - show your code there${stand && stand.completed ? ' again' : ''}.</div>
+      </div>`;
+    box.style.display = 'flex';
+  }
+
   // ---------- render / poll ----------
 
   function render(participant) {
     const list = participant.milestones;
     const isStop = (m) => m.orderIndex > 0 && m.orderIndex < list.length - 1;
-    const total = list.filter(isStop).length;
+    // progress counts the required stops; optional ones are extra
+    const required = list.filter((m) => isStop(m) && !m.optional);
+    const total = required.length;
+    const requiredDone = required.filter((m) => m.completed).length;
+    // any stop visited, required or optional, gets confetti and a message
     const done = list.filter((m) => isStop(m) && m.completed).length;
 
     greeting.textContent = `Hi, ${participant.name.split(' ')[0]}`;
-    progressBadge.textContent = `${done}/${total}`;
-    document.getElementById('stopsCount').textContent = `${done} of ${total} visited`;
+    progressBadge.textContent = `${requiredDone}/${total}`;
+    document.getElementById('stopsCount').textContent = `${requiredDone} of ${total} required visited`;
+    renderTokens(participant.tokens, list);
 
     const firstRender = lastCompletedCount === -1;
     const current = path.update(list);
     buildList(list);
     renderRewardSection(participant);
 
-    // nothing left to scan once the journey is finished
-    qrFab.style.display = participant.finishedAt ? 'none' : '';
+    // after finishing, the code is still needed for an optional stop or to
+    // collect an extra book; hide it only when there is nothing left
+    const optionalLeft = list.some((m) => m.optional && !m.completed);
+    const tokensLeft = participant.tokens && participant.tokens.available > 0;
+    qrFab.style.display = participant.finishedAt && !optionalLeft && !tokensLeft ? 'none' : '';
 
     const scrollToStop = (index, smooth) => {
       const rect = journeySvg.getBoundingClientRect();

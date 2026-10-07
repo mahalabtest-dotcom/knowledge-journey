@@ -63,6 +63,19 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// A station is any stage between the automatic start and finish.
+function isStation(m, milestones) {
+  return m.order_index > 0 && m.order_index < milestones.length - 1;
+}
+
+// Extra book tokens: one per optional stage done; some may already have
+// been used at the book stand.
+function tokenView(milestones, progress, p) {
+  const earned = milestones.filter((m) => m.optional && progress[m.id]).length;
+  const used = Math.min(earned, p.tokens_used || 0);
+  return { earned, used, available: earned - used };
+}
+
 function getMilestones(q) {
   return q.all('SELECT *, title_ar AS titleAr FROM milestones ORDER BY order_index ASC');
 }
@@ -99,10 +112,10 @@ async function claimFinishRank(tx, participantId, finishedAt) {
 
 async function maybeAutoFinish(tx, participantId) {
   const milestones = await getMilestones(tx);
-  const physical = milestones.filter((m) => m.order_index > 0 && m.order_index < milestones.length - 1);
+  const required = milestones.filter((m) => isStation(m, milestones) && !m.optional);
   const finish = milestones[milestones.length - 1];
   const progress = await getProgressSet(tx, participantId);
-  const allDone = physical.every((m) => progress[m.id]);
+  const allDone = required.every((m) => progress[m.id]);
   if (allDone && finish && !progress[finish.id]) {
     await completeMilestone(tx, participantId, finish.id);
     await claimFinishRank(tx, participantId, new Date().toISOString());
@@ -164,6 +177,7 @@ async function participantView(q, p) {
     finishedAt: p.finished_at,
     finishRank: p.finish_rank || null,
     reward,
+    tokens: tokenView(milestones, progress, p),
     milestones: milestones.map((m) => ({
       id: m.id,
       title: m.title,
@@ -171,6 +185,8 @@ async function participantView(q, p) {
       description: m.description,
       icon: m.icon,
       orderIndex: m.order_index,
+      optional: Boolean(m.optional),
+      bookStand: Boolean(m.book_stand),
       completed: Boolean(progress[m.id]),
       completedAt: progress[m.id] || null,
     })),
@@ -329,8 +345,7 @@ app.get('/api/admin/participants', requireAdmin, route(async (req, res) => {
     getMilestones(db),
     db.all('SELECT participant_id, milestone_id FROM progress'),
   ]);
-  const isStation = (m) => m.order_index > 0 && m.order_index < milestones.length - 1;
-  const totalPhysical = milestones.filter(isStation).length;
+  const required = milestones.filter((m) => isStation(m, milestones) && !m.optional);
   // everyone's progress in one query, not one query per person
   const done = new Set(progressRows.map((r) => `${r.participant_id}|${r.milestone_id}`));
 
@@ -341,9 +356,9 @@ app.get('/api/admin/participants', requireAdmin, route(async (req, res) => {
     token: p.token,
     createdAt: p.created_at,
     finishedAt: p.finished_at,
-    completed: milestones.filter((m) => isStation(m) && done.has(`${p.id}|${m.id}`)).length,
-    total: totalPhysical,
-    milestoneStatus: milestones.map((m) => ({ id: m.id, title: m.title, titleAr: m.titleAr, done: done.has(`${p.id}|${m.id}`) })),
+    completed: required.filter((m) => done.has(`${p.id}|${m.id}`)).length,
+    total: required.length,
+    milestoneStatus: milestones.map((m) => ({ id: m.id, title: m.title, titleAr: m.titleAr, optional: Boolean(m.optional), done: done.has(`${p.id}|${m.id}`) })),
   }));
   res.json({ participants: result, milestones });
 }));
@@ -476,16 +491,25 @@ app.post('/api/admin/checkin', requireAdmin, route(async (req, res) => {
     return res.status(400).json({ error: 'The start point is marked automatically at registration.' });
   }
 
-  // The whole check-in - the scan, and finishing with its rank and prize
-  // draw if this was the last station - is one transaction.
-  const alreadyDone = await db.transaction(async (tx) => {
-    if ((await getProgressSet(tx, p.id))[milestoneId]) return true;
-    await completeMilestone(tx, p.id, milestoneId);
-    await maybeAutoFinish(tx, p.id);
-    return false;
+  // The whole check-in - the scan, finishing with its rank and prize draw
+  // if this was the last required station, and using up extra book tokens
+  // at the book stand - is one transaction.
+  const { alreadyDone, books } = await db.transaction(async (tx) => {
+    const alreadyDone = Boolean((await getProgressSet(tx, p.id))[milestoneId]);
+    if (!alreadyDone) {
+      await completeMilestone(tx, p.id, milestoneId);
+      await maybeAutoFinish(tx, p.id);
+    }
+    if (!milestone.book_stand) return { alreadyDone, books: null };
+    // At the book stand: 1 book on the first visit, plus 1 per unused
+    // token. Someone who earns a token later can come back for that book.
+    const fresh = await tx.get('SELECT * FROM participants WHERE id = ?', p.id);
+    const tokens = tokenView(await getMilestones(tx), await getProgressSet(tx, p.id), fresh);
+    await tx.run('UPDATE participants SET tokens_used = ? WHERE id = ?', tokens.earned, p.id);
+    return { alreadyDone, books: { total: (alreadyDone ? 0 : 1) + tokens.available, extra: tokens.available } };
   });
 
-  res.json({ ok: true, alreadyDone, participant: await participantView(db, await getParticipantByToken(db, token)) });
+  res.json({ ok: true, alreadyDone, books, participant: await participantView(db, await getParticipantByToken(db, token)) });
 }));
 
 // ---------- pages ----------

@@ -94,7 +94,8 @@
     // punctuation (e.g. a closing bracket) stays on the correct side
     milestoneSelect.innerHTML = milestones.map((m, i) => {
       const ar = m.titleAr ? ` · ⁧${m.titleAr}⁩` : '';
-      return `<option value="${escapeHtml(m.id)}">${i + 1}. ${escapeHtml(m.title)}${escapeHtml(ar)}</option>`;
+      const tag = m.optional ? ' (optional)' : m.book_stand ? ' (books)' : '';
+      return `<option value="${escapeHtml(m.id)}">${i + 1}. ${escapeHtml(m.title)}${tag}${escapeHtml(ar)}</option>`;
     }).join('');
     const saved = localStorage.getItem('admin_selected_milestone');
     if (saved && milestones.some(m => m.id === saved)) milestoneSelect.value = saved;
@@ -115,10 +116,16 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Check-in failed');
       const name = data.participant.name;
+      // at the book stand: how many books to hand over now
+      const b = data.books;
+      const books = !b ? ''
+        : b.total === 0 ? '<br>No extra books to collect.'
+        : `<br><span style="font-size:1.25rem;font-weight:800;">📚 Can pick ${b.total} book${b.total === 1 ? '' : 's'}</span>`
+          + (b.extra ? ` <span class="muted">(${data.alreadyDone ? '' : '1 + '}${b.extra} extra token${b.extra === 1 ? '' : 's'}, now used)</span>` : '');
       if (data.alreadyDone) {
-        showResult('already', `<strong>${escapeHtml(name)}</strong> already has this checkpoint. ✔️`);
+        showResult(b && b.total ? 'success' : 'already', `<strong>${escapeHtml(name)}</strong> already has this checkpoint. ✔️${books}`);
       } else {
-        showResult('success', `<strong>✅ ${escapeHtml(name)}</strong> checked in at ${escapeHtml(milestoneSelect.options[milestoneSelect.selectedIndex].text)}!`);
+        showResult('success', `<strong>✅ ${escapeHtml(name)}</strong> checked in at ${escapeHtml((milestones.find((m) => m.id === milestoneId) || {}).title || 'this stage')}.${books}`);
       }
     } catch (e) {
       showResult('error', `⚠️ ${escapeHtml(e.message)}`);

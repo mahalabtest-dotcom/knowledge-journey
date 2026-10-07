@@ -15,9 +15,14 @@ A two-way event platform used alongside a live, in-person event:
   running, and scan attendees' codes. They also have a live dashboard of
   everyone's progress, a poster page with the entrance QR that starts
   registration, and a rewards page (see below).
-- **Stations.** Seven real stations (`m1`-`m7`) between an automatic
-  start and finish, nine books in all. Every stop has an English `title`
-  and an Arabic `title_ar`. Stations can be visited in any order.
+- **Stages** (set by the user 2026-10-07). Eight stages between an
+  automatic start and finish, ten books in all, shown in this order: VR,
+  Bookmark (optional), Letters, Get Abstract, DEWA Smart Library, Panel
+  Discussion (optional), From DEWA Knowledge Centers (the book stand),
+  Survey. Every stage has an English `title` and an Arabic `title_ar`.
+  Stages can be visited in any order (the user chose this over a strict
+  order). The journey finishes when the six required ones are done; each
+  optional stage done earns one extra book token, used at the book stand.
 - **Rewards.** By finish rank: each of the first 10 gets a prize drawn at
   random, the moment they finish, from a pool of 1 Money Voucher (grand
   prize), 3 Petrol vouchers and 6 Coffee vouchers (each draw leaves the
@@ -94,9 +99,16 @@ See `db.js` for the exact schema. Core tables:
   encoded in the attendee's personal QR code and is their only
   credential), `created_at`, `finished_at`, plus the reward-tracking
   columns below.
-- `milestones` - fixed set of rows seeded once on first run: `start`
-  (order_index 0), the seven stations `m1`-`m7` (order_index 1-7), and
-  `finish` (order_index 8). `title_ar` holds the Arabic name (added by the
+- `milestones` - the stages, seeded from the `stages` list in `db.js`:
+  `start` (order_index 0), eight stations (1-8), `finish` (9). Station
+  ids are not in order (`m2, m3, m4, m8, m9, m10, m1, m11`) because stages
+  that carried over from the first list kept their ids, so progress on
+  them survived the switch-over. `optional` = 1 for Bookmark (`m3`) and
+  Panel Discussion (`m10`); `book_stand` = 1 for From DEWA Knowledge
+  Centers (`m1`). The list is versioned by the `stages` setting (now
+  `'2'`): when it differs, `db.js` rewrites the table on startup and drops
+  progress on stages that no longer exist. To change the stages, edit the
+  list and bump that version. `title_ar` holds the Arabic name (added by the
   same "add column if missing" migration as the participant columns);
   `getMilestones()` also returns it as `titleAr`, which is what every API
   response uses. Only title/title_ar/description are editable after
@@ -109,9 +121,19 @@ See `db.js` for the exact schema. Core tables:
 
 Key rule enforced in `server.js`: `start` is auto-completed at
 registration and can never be scanned; `finish` is never scanned directly
-either - it auto-completes the moment every "physical" milestone
-(order_index strictly between 0 and the last index) is done. See
-`maybeAutoFinish()`.
+either - it auto-completes the moment every required station (not
+`optional`) is done. See `maybeAutoFinish()`. Optional stations can still
+be scanned after finishing; they never change the finish rank.
+
+Extra book tokens: `tokenView()` = optional stations done (`earned`) and
+`participants.tokens_used`. A scan at the `book_stand` station returns
+`books: { total, extra }` - 1 book on the first visit plus the unused
+tokens - and sets `tokens_used = earned`, inside the check-in
+transaction. A later re-scan there hands out only tokens earned since.
+The attendee's page shows unused tokens, and keeps "Show my code"
+visible after finishing while an optional stage or a token is left.
+Progress counts (`3/6`, the dashboard's "x / 6 required") count required
+stations only.
 
 Rewards tables:
 

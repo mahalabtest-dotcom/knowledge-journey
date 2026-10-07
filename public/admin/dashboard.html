@@ -26,6 +26,9 @@
   .mdot-wrap { display: flex; align-items: center; gap: 0.3em; font-size: 0.75rem; color: #8b8264; }
   .mdot { width: 11px; height: 11px; border-radius: 50%; background: var(--parchment-dark); flex: 0 0 auto; }
   .mdot.done { background: var(--forest); }
+  /* optional stages: hollow until done */
+  .mdot.opt { background: transparent; box-shadow: inset 0 0 0 2px var(--parchment-dark); }
+  .mdot.opt.done { background: var(--forest); box-shadow: none; }
 
   .empty-state { text-align: center; padding: 2.5em 1em; color: #8b8264; }
 </style>
@@ -63,7 +66,7 @@
       const pct = p.total ? Math.round((p.completed / p.total) * 100) : 0;
       const dots = p.milestoneStatus
         .filter((m) => milestoneCols.some((c) => c.id === m.id))
-        .map((m) => `<div class="mdot ${m.done ? 'done' : ''}" title="${escapeHtml(m.title)}"></div>`)
+        .map((m) => `<div class="mdot ${m.done ? 'done' : ''} ${m.optional ? 'opt' : ''}" title="${escapeHtml(m.title)}${m.optional ? ' (optional)' : ''}"></div>`)
         .join('');
 
       const card = document.createElement('div');
@@ -79,7 +82,7 @@
         <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
         <div class="mdot-wrap">
           <div class="milestone-dots">${dots}</div>
-          <span>${p.completed} / ${p.total} checkpoints</span>
+          <span>${p.completed} / ${p.total} required</span>
         </div>
       `;
       rows.appendChild(card);

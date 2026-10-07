@@ -10,20 +10,22 @@ staff check them in by scanning each attendee's personal QR code.
 1. **Registration.** A generic QR code (printed or displayed at the entrance)
    points every attendee to `/register`. They enter their name and email and
    land on `/journey`, their personal journey page.
-2. **The journey.** The page shows nine books on a winding bookmark ribbon
-   (Start → the seven stations → The End), each named in English and
-   Arabic. Stations can be visited in any order; the first one not yet
-   visited is marked "Go here next". The attendee's books open live as
-   staff check them in, and a little robot (modelled on DEWA's service
-   robot) glides along the ribbon to the book just opened.
+2. **The journey.** The page shows ten books on a winding bookmark ribbon
+   (Start → the eight stages → The End), each named in English and
+   Arabic. Stages can be visited in any order; the first required one not
+   yet visited is marked "Go here next". Two stages are optional. The
+   attendee's books open live as staff check them in, and a little robot
+   (modelled on DEWA's service robot) glides along the ribbon to the book
+   just opened.
 3. **Check-in.** At each physical station, staff open `/admin/scan`, select
    which checkpoint they're staffing, and scan the QR code shown on the
    attendee's phone (`Show My Checkpoint Code` button on their journey page).
    A match checks that milestone off immediately - the attendee's own screen
    updates within a few seconds without them doing anything.
-4. **Finish.** Once every physical milestone is checked off, the finish line
+4. **Finish.** Once every required stage is checked off, the finish line
    completes automatically and the attendee's screen celebrates with confetti
-   - and shows them their reward (see below).
+   - and shows them their reward (see below). Optional stages can still be
+   done after finishing; they don't change the finishing place.
 5. **Dashboard.** `/admin/dashboard` gives staff a live list of every
    attendee and their progress.
 
@@ -173,17 +175,26 @@ before printing or displaying the QR code.
 
 ## Customizing milestones
 
-Milestones are seeded once into the database the first time the server
-starts (see `db.js`). Between the automatic Start (البداية) and The End
-(النهاية) there are seven stations, ids `m1`-`m7`:
+The stages are seeded into the database by `db.js`, in this order, between
+the automatic Start (البداية) and The End (النهاية):
 
-1. From DEWA Knowledge Centers to Your Bookshelf - من مراكز المعرفة في ديوا إلى مكتبتك
-2. Letter in 360: VR Experience - الرسائل بتقنية 360° – تجربة الواقع الافتراضي
-3. A Mark to Remember: Design Your Own Bookmark - علامة للذكرى: صمّم فاصل كتابك الخاص
-4. Letters (From To) - الرسائل (من – إلى)
-5. Guess the Book Activity - فعالية خَمّن الكتاب
-6. Fill in the Blanks Activity - فعالية أكمل الفراغات
-7. Alphabets Challenge Activity - فعالية تحدي الحروف
+| # | Stage | Arabic | Scan |
+|---|---|---|---|
+| 1 | Letter in 360: VR Experience | الرسائل بتقنية 360° – تجربة الواقع الافتراضي | required |
+| 2 | A Mark to Remember: Design Your Own Bookmark | علامة للذكرى: صمّم فاصل كتابك الخاص | optional, +1 book |
+| 3 | Letters (From To) | الرسائل (من – إلى) | required |
+| 4 | Get Abstract | جِت أبستراكت: ملخّصات الكتب | required |
+| 5 | DEWA Smart Library | مكتبة ديوا الذكية | required |
+| 6 | The Panel Discussion | الجلسة الحوارية | optional, +1 book |
+| 7 | From DEWA Knowledge Centers to Your Bookshelf | من مراكز المعرفة في ديوا إلى مكتبتك | required - the book stand |
+| 8 | Survey | الاستبيان | required |
+
+**Optional stages and extra books.** Each optional stage an attendee does
+earns them one extra book token. At the book stand (stage 7), the scan
+result tells staff how many books to hand over - 1 plus any unused tokens -
+and marks those tokens used. Someone who does an optional stage after
+visiting the stand gets a token on their phone and comes back: a second
+scan at the stand shows just the extra books still owed.
 
 Each has an English `title` and an Arabic `title_ar`. Both appear on the
 journey, in the "All stops" list and in the scanner's checkpoint dropdown.
@@ -191,15 +202,14 @@ On the journey, the English name wraps onto up to three lines and the
 Arabic name onto up to two.
 
 To rename them, either:
-- Edit the `defaults` array in `db.js` and delete `data/event.db*` (see
-  "Resetting" below - this wipes all registrations), or
+- Edit the `stages` list in `db.js` and raise its version number (the
+  `'stages'` setting) so the server switches over on its next start, or
 - Use the admin API while logged in as admin:
   `PUT /api/admin/milestones/m1` with
   `{ "title": "...", "titleAr": "...", "description": "..." }`.
 
-Adding or removing stations means editing `db.js` and resetting the
-database; the journey, dashboard and scanner all follow the `milestones`
-table.
+Adding, removing or reordering stages is done the same way, in `db.js`;
+the journey, dashboard and scanner all follow the `milestones` table.
 
 ## Security notes for the event
 

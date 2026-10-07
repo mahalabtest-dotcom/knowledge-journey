@@ -154,26 +154,47 @@ CREATE TABLE IF NOT EXISTS settings (
   await addColumn('participants', 'prize_image', 'TEXT');
   await addColumn('participants', 'prize_main', 'INTEGER');
   await addColumn('milestones', 'title_ar', 'TEXT');
+  // 1 = the journey can be finished without this stage; doing it earns an
+  // extra book token
+  await addColumn('milestones', 'optional', 'INTEGER NOT NULL DEFAULT 0');
+  // 1 = the stand where attendees pick books and extra book tokens are used
+  await addColumn('milestones', 'book_stand', 'INTEGER NOT NULL DEFAULT 0');
+  // how many extra book tokens this person has already used at the book stand
+  await addColumn('participants', 'tokens_used', 'INTEGER NOT NULL DEFAULT 0');
   await addColumn('reward_tiers', 'image', 'TEXT');
 
-  // Seed default milestones only if the table is empty, so an admin's
-  // edits are never overwritten on restart.
-  if ((await db.get('SELECT COUNT(*) AS c FROM milestones')).c === 0) {
-    const defaults = [
-      ['start', 0, 'Start', 'البداية', 'Every story starts on the first page.'],
-      ['m1', 1, 'From DEWA Knowledge Centers to Your Bookshelf', 'من مراكز المعرفة في ديوا إلى مكتبتك', null],
-      ['m2', 2, 'Letter in 360: VR Experience', 'الرسائل بتقنية 360° – تجربة الواقع الافتراضي', null],
-      ['m3', 3, 'A Mark to Remember: Design Your Own Bookmark', 'علامة للذكرى: صمّم فاصل كتابك الخاص', null],
-      ['m4', 4, 'Letters (From To)', 'الرسائل (من – إلى)', null],
-      ['m5', 5, 'Guess the Book Activity', 'فعالية خَمّن الكتاب', null],
-      ['m6', 6, 'Fill in the Blanks Activity', 'فعالية أكمل الفراغات', null],
-      ['m7', 7, 'Alphabets Challenge Activity', 'فعالية تحدي الحروف', null],
-      ['finish', 8, 'The End', 'النهاية', 'You read the whole story - well done!'],
-    ];
+  // The stages (version 2, set by the user 2026-10-07), in journey order.
+  // Seeded once; a database seeded for an earlier set of stages is switched
+  // over once. Stages that carry over keep their id (m1-m4), so progress
+  // on them is kept; progress on removed stages (m5-m7) is dropped. Admin
+  // edits to names are kept only until the next switch-over.
+  //   [id, title, Arabic title, optional, book stand]
+  const stages = [
+    ['start', 'Start', 'البداية', 0, 0],
+    ['m2', 'Letter in 360: VR Experience', 'الرسائل بتقنية 360° – تجربة الواقع الافتراضي', 0, 0],
+    ['m3', 'A Mark to Remember: Design Your Own Bookmark', 'علامة للذكرى: صمّم فاصل كتابك الخاص', 1, 0],
+    ['m4', 'Letters (From To)', 'الرسائل (من – إلى)', 0, 0],
+    ['m8', 'Get Abstract', 'جِت أبستراكت: ملخّصات الكتب', 0, 0],
+    ['m9', 'DEWA Smart Library', 'مكتبة ديوا الذكية', 0, 0],
+    ['m10', 'The Panel Discussion', 'الجلسة الحوارية', 1, 0],
+    ['m1', 'From DEWA Knowledge Centers to Your Bookshelf', 'من مراكز المعرفة في ديوا إلى مكتبتك', 0, 1],
+    ['m11', 'Survey', 'الاستبيان', 0, 0],
+    ['finish', 'The End', 'النهاية', 0, 0],
+  ];
+  const stagesVersion = await db.get("SELECT value FROM settings WHERE key = 'stages'");
+  if (!stagesVersion || stagesVersion.value !== '2') {
     await db.transaction(async (tx) => {
-      for (const r of defaults) {
-        await tx.run('INSERT INTO milestones (id, order_index, title, title_ar, description, icon) VALUES (?, ?, ?, ?, ?, NULL)', ...r);
+      await tx.run('DELETE FROM milestones');
+      for (const [i, [id, title, titleAr, optional, bookStand]] of stages.entries()) {
+        const description = id === 'start' ? 'Every story starts on the first page.'
+          : id === 'finish' ? 'You read the whole story - well done!' : null;
+        await tx.run(
+          'INSERT INTO milestones (id, order_index, title, title_ar, description, icon, optional, book_stand) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)',
+          id, i, title, titleAr, description, optional, bookStand
+        );
       }
+      await tx.run(`DELETE FROM progress WHERE milestone_id NOT IN (${stages.map(() => '?').join(', ')})`, ...stages.map((x) => x[0]));
+      await tx.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('stages', '2')");
     });
   }
 

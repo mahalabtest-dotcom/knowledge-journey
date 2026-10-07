@@ -98,6 +98,15 @@
   .m-dot svg { width: 14px; height: 14px; display: none; }
   .m-row.done .m-dot svg { display: block; }
   .m-title { font-weight: 700; }
+  .m-opt {
+    display: inline-block; font-size: 0.72rem; font-weight: 700; color: var(--maroon);
+    background: #f1e3ea; border-radius: 6px; padding: 0 6px; margin-left: 4px; vertical-align: 1px;
+  }
+  /* extra book tokens earned from optional stops */
+  #tokens { align-items: center; gap: 12px; margin-bottom: 16px; padding: 14px 16px; border: 2px dashed var(--mauve); }
+  .tokens-count { font-size: 1.6rem; flex: 0 0 auto; letter-spacing: -4px; }
+  .tokens-title { font-weight: 800; color: var(--maroon); }
+  .tokens-sub { font-size: 0.88rem; color: var(--navy); }
   .m-title-ar { font-weight: 600; font-size: 0.92rem; text-align: right; }
   .m-row > div:last-child { flex: 1; }
   .m-row:not(.done) .m-title, .m-row:not(.done) .m-title-ar { color: var(--muted); }
@@ -178,6 +187,7 @@
   </div>
 
   <div id="rewardSection" style="display:none;"></div>
+  <div id="tokens" class="card" style="display:none;" role="status"></div>
 
   <div class="sheet-shadow">
     <div class="sheet" id="sheet">
