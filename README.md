@@ -10,8 +10,8 @@ staff check them in by scanning each attendee's personal QR code.
 1. **Registration.** A generic QR code (printed or displayed at the entrance)
    points every attendee to `/register`. They enter their name and email and
    land on `/journey`, their personal journey page.
-2. **The journey.** The page shows ten books on a winding bookmark ribbon
-   (Start → the eight stages → The End), each named in English and
+2. **The journey.** The page shows nine books on a winding bookmark ribbon
+   (Start → the seven stages → The End), each named in English and
    Arabic. Stages can be visited in any order; the first required one not
    yet visited is marked "Go here next". Two stages are optional. The
    attendee's books open live as staff check them in, and a little robot
@@ -93,7 +93,10 @@ One-time setup:
    (`libsql://….turso.io`) and create a **token** for it.
 3. **Render** (render.com) - sign up with GitHub, choose **New →
    Blueprint**, pick the repository. Render reads `render.yaml` and asks
-   for `ADMIN_PASSWORD`, `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`.
+   for `ADMIN_PASSWORD`, `RESET_PASSWORD`, `TURSO_DATABASE_URL` and
+   `TURSO_AUTH_TOKEN`. `RESET_PASSWORD` is only for **Clear all
+   registrations** - keep it to yourself; staff only need the admin
+   password. (If it is left empty, the admin password works there too.)
    `SESSION_SECRET` is generated for you. After a few minutes the app is
    live at `https://knowledge-journey-….onrender.com`.
 4. **UptimeRobot** (uptimerobot.com, free) - add an HTTP monitor for
@@ -183,14 +186,21 @@ the automatic Start (البداية) and The End (النهاية):
 | 1 | Letter in 360: VR Experience | الرسائل بتقنية 360° – تجربة الواقع الافتراضي | required |
 | 2 | A Mark to Remember: Design Your Own Bookmark | علامة للذكرى: صمّم فاصل كتابك الخاص | optional, +1 book |
 | 3 | Letters (From To) | الرسائل (من – إلى) | required |
-| 4 | Get Abstract | جِت أبستراكت: ملخّصات الكتب | required |
-| 5 | DEWA Smart Library | مكتبة ديوا الذكية | required |
-| 6 | The Panel Discussion | الجلسة الحوارية | optional, +1 book |
-| 7 | From DEWA Knowledge Centers to Your Bookshelf | من مراكز المعرفة في ديوا إلى مكتبتك | required - the book stand |
-| 8 | Survey | الاستبيان | required |
+| 4 | Get Abstract & DEWA Smart Library | جِت أبستراكت ومكتبة ديوا الذكية | required |
+| 5 | The Panel Discussion | الجلسة الحوارية | optional, +1 book |
+| 6 | From DEWA Knowledge Centers to Your Bookshelf | من مراكز المعرفة في ديوا إلى مكتبتك | required - the book stand |
+| 7 | Survey | الاستبيان | required - answered on the phone, not scanned |
+
+**The survey.** Once an attendee's other required stages are done, their
+journey page shows the survey question ("What did you think of the event?
+Share your thoughts.") with a text box and **Submit**. Submitting completes
+the Survey stage - and the journey, if it was the last required stage. The
+answers are on the admin **Survey** page, newest first, with a **Download
+(CSV)** button for Excel. The question can be changed on `/admin/rewards`
+under Messages.
 
 **Optional stages and extra books.** Each optional stage an attendee does
-earns them one extra book token. At the book stand (stage 7), the scan
+earns them one extra book token. At the book stand (stage 6), the scan
 result tells staff how many books to hand over - 1 plus any unused tokens -
 and marks those tokens used. Someone who does an optional stage after
 visiting the stand gets a token on their phone and comes back: a second
@@ -227,8 +237,9 @@ the journey, dashboard and scanner all follow the `milestones` table.
 
 ## Resetting between a test run and the real event
 
-On `/admin/rewards`, at the bottom: type `RESET` and press **Clear all
-registrations**. This removes every registration, check-in and prize drawn,
+On `/admin/rewards`, at the bottom: enter the **reset password** (the
+`RESET_PASSWORD` setting in Render, or the admin password if that isn't
+set) and press **Clear all registrations**. This removes every registration, check-in and prize drawn,
 so the real event starts from 1st place; stations and prize settings stay.
 It works the same hosted or on a laptop.
 

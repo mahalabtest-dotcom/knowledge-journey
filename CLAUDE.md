@@ -15,13 +15,13 @@ A two-way event platform used alongside a live, in-person event:
   running, and scan attendees' codes. They also have a live dashboard of
   everyone's progress, a poster page with the entrance QR that starts
   registration, and a rewards page (see below).
-- **Stages** (set by the user 2026-10-07). Eight stages between an
-  automatic start and finish, ten books in all, shown in this order: VR,
-  Bookmark (optional), Letters, Get Abstract, DEWA Smart Library, Panel
-  Discussion (optional), From DEWA Knowledge Centers (the book stand),
-  Survey. Every stage has an English `title` and an Arabic `title_ar`.
+- **Stages** (set by the user 2026-10-07). Seven stages between an
+  automatic start and finish, nine books in all, shown in this order: VR,
+  Bookmark (optional), Letters, Get Abstract & DEWA Smart Library (one
+  stage), Panel Discussion (optional), From DEWA Knowledge Centers (the
+  book stand), Survey (a question answered on the phone, not scanned). Every stage has an English `title` and an Arabic `title_ar`.
   Stages can be visited in any order (the user chose this over a strict
-  order). The journey finishes when the six required ones are done; each
+  order). The journey finishes when the five required ones are done; each
   optional stage done earns one extra book token, used at the book stand.
 - **Rewards.** By finish rank: each of the first 10 gets a prize drawn at
   random, the moment they finish, from a pool of 1 Money Voucher (grand
@@ -81,6 +81,7 @@ public/
                            pool), prize group and messages, pool
                            status, live lists of who finished and what
                            they got, Clear all registrations
+    feedback.html        Survey answers ("Survey" in the nav) + CSV download
     admin-common.js    Shared nav bar + session check, loaded by every
                          admin page except login
   shared/theme.css   Shared theme (palette, fonts, buttons, cards)
@@ -100,13 +101,13 @@ See `db.js` for the exact schema. Core tables:
   credential), `created_at`, `finished_at`, plus the reward-tracking
   columns below.
 - `milestones` - the stages, seeded from the `stages` list in `db.js`:
-  `start` (order_index 0), eight stations (1-8), `finish` (9). Station
-  ids are not in order (`m2, m3, m4, m8, m9, m10, m1, m11`) because stages
-  that carried over from the first list kept their ids, so progress on
-  them survived the switch-over. `optional` = 1 for Bookmark (`m3`) and
+  `start` (order_index 0), seven stations (1-7), `finish` (8). Station
+  ids are not in order (`m2, m3, m4, m8, m10, m1, m11`) because stages
+  that carried over kept their ids, so progress on them survived each
+  switch-over (`m9`, DEWA Smart Library, was merged into `m8`). `optional` = 1 for Bookmark (`m3`) and
   Panel Discussion (`m10`); `book_stand` = 1 for From DEWA Knowledge
   Centers (`m1`). The list is versioned by the `stages` setting (now
-  `'2'`): when it differs, `db.js` rewrites the table on startup and drops
+  `'4'`): when it differs, `db.js` rewrites the table on startup and drops
   progress on stages that no longer exist. To change the stages, edit the
   list and bump that version. `title_ar` holds the Arabic name (added by the
   same "add column if missing" migration as the participant columns);
@@ -132,8 +133,21 @@ tokens - and sets `tokens_used = earned`, inside the check-in
 transaction. A later re-scan there hands out only tokens earned since.
 The attendee's page shows unused tokens, and keeps "Show my code"
 visible after finishing while an optional stage or a token is left.
-Progress counts (`3/6`, the dashboard's "x / 6 required") count required
+Progress counts (`3/5`, the dashboard's "x / 5 required") count required
 stations only.
+
+The Survey stage (`milestones.survey` = 1, `m11`) is never scanned:
+`/api/admin/checkin` refuses it and the scanner leaves it out. Once every
+other required station is done (`surveyOpen()`), `/api/me` returns
+`survey: { open: true, question }` and the journey page shows a card with
+the question (`survey_question` setting, editable under Messages on
+`/admin/rewards`). `POST /api/survey { token, answer }` stores the
+answer in `feedback` (one row per attendee, max 2000 characters) and
+completes the stage in one transaction - finishing the journey if it was
+the last required stage. Admins read the answers on `/admin/feedback`
+("Survey" in the nav) or download `/api/admin/feedback.csv` (UTF-8 with a
+BOM so Excel keeps Arabic). The card is built once and not rebuilt by the
+poll, so a half-typed answer survives.
 
 Rewards tables:
 
@@ -355,7 +369,9 @@ Since this is phone-first, when testing changes:
 
 Reset registrations between test runs and the real event with **Clear all
 registrations** on `/admin/rewards` (`POST /api/admin/reset`, body
-`{ confirm: 'RESET' }`; keeps stations and prize settings). That is the
+`{ password }` - the `RESET_PASSWORD` env var, or `ADMIN_PASSWORD` if
+unset, so staff who share the admin login can't wipe the event; keeps
+stations and prize settings; also clears survey answers). That is the
 only way when hosted. On a laptop, deleting the local file also resets
 stations and prizes to the defaults:
 ```

@@ -23,6 +23,9 @@ const { db, init, where } = require('./db');
 const PORT = process.env.PORT || 3000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'change-me';
 const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-secret-change-me';
+// Clearing all registrations needs its own password, so staff who share
+// the admin password can't do it. Falls back to the admin password.
+const RESET_PASSWORD = (process.env.RESET_PASSWORD || '').trim() || ADMIN_PASSWORD;
 // Render sets RENDER_EXTERNAL_URL to the app's public https address.
 const BASE_URL = process.env.BASE_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
 
@@ -167,8 +170,18 @@ async function rewardView(q, p) {
   };
 }
 
+// The survey question is answered on the phone once every other required
+// stage is done; answering it completes the survey stage.
+function surveyOpen(milestones, progress) {
+  const survey = milestones.find((m) => m.survey);
+  if (!survey || progress[survey.id]) return false;
+  return milestones.every((m) => !isStation(m, milestones) || m.optional || m.survey || progress[m.id]);
+}
+
 async function participantView(q, p) {
-  const [milestones, progress, reward] = await Promise.all([getMilestones(q), getProgressSet(q, p.id), rewardView(q, p)]);
+  const [milestones, progress, reward, question] = await Promise.all([
+    getMilestones(q), getProgressSet(q, p.id), rewardView(q, p), getSetting(q, 'survey_question'),
+  ]);
   return {
     id: p.id,
     name: p.name,
@@ -178,6 +191,7 @@ async function participantView(q, p) {
     finishRank: p.finish_rank || null,
     reward,
     tokens: tokenView(milestones, progress, p),
+    survey: { open: surveyOpen(milestones, progress), question },
     milestones: milestones.map((m) => ({
       id: m.id,
       title: m.title,
@@ -187,6 +201,7 @@ async function participantView(q, p) {
       orderIndex: m.order_index,
       optional: Boolean(m.optional),
       bookStand: Boolean(m.book_stand),
+      survey: Boolean(m.survey),
       completed: Boolean(progress[m.id]),
       completedAt: progress[m.id] || null,
     })),
@@ -272,6 +287,31 @@ app.get('/api/me', route(async (req, res) => {
   const p = await getParticipantByToken(db, req.query.token);
   if (!p) return res.status(404).json({ error: 'Not found' });
   res.json({ participant: await participantView(db, p) });
+}));
+
+app.post('/api/survey', route(async (req, res) => {
+  const { token, answer } = req.body || {};
+  const text = String(answer || '').trim();
+  if (!text) return res.status(400).json({ error: 'Please write a few words before submitting.' });
+  if (text.length > 2000) return res.status(400).json({ error: 'Please keep it under 2000 characters.' });
+  const p = await getParticipantByToken(db, token);
+  if (!p) return res.status(404).json({ error: 'Not found' });
+  // answering completes the survey stage, and finishes the journey (rank,
+  // prize draw) if it was the last required stage - one transaction
+  const error = await db.transaction(async (tx) => {
+    const milestones = await getMilestones(tx);
+    const survey = milestones.find((m) => m.survey);
+    const progress = await getProgressSet(tx, p.id);
+    if (!survey) return 'There is no survey.';
+    if (progress[survey.id]) return null;   // already answered: nothing to do
+    if (!surveyOpen(milestones, progress)) return 'Please visit the other required stops first.';
+    await tx.run('INSERT OR REPLACE INTO feedback (participant_id, answer, created_at) VALUES (?, ?, ?)', p.id, text, new Date().toISOString());
+    await completeMilestone(tx, p.id, survey.id);
+    await maybeAutoFinish(tx, p.id);
+    return null;
+  });
+  if (error) return res.status(400).json({ error });
+  res.json({ ok: true, participant: await participantView(db, await getParticipantByToken(db, token)) });
 }));
 
 app.get('/api/qrcode', async (req, res) => {
@@ -371,6 +411,7 @@ app.get('/api/admin/rewards', requireAdmin, route(async (req, res) => {
     pool: await getPool(db),
     collectMessage: await getSetting(db, 'collect_message'),
     thanksMessage: await getSetting(db, 'thanks_message'),
+    surveyQuestion: await getSetting(db, 'survey_question'),
   });
 }));
 
@@ -431,12 +472,14 @@ app.put('/api/admin/rewards/tiers/:id', requireAdmin, route(async (req, res) => 
 }));
 
 app.put('/api/admin/rewards/settings', requireAdmin, route(async (req, res) => {
-  const { collectMessage, thanksMessage } = req.body || {};
+  const { collectMessage, thanksMessage, surveyQuestion } = req.body || {};
+  if (surveyQuestion !== undefined && !String(surveyQuestion).trim()) return res.status(400).json({ error: 'A survey question is required.' });
   if (collectMessage !== undefined && !String(collectMessage).trim()) return res.status(400).json({ error: 'A collection message is required.' });
   if (thanksMessage !== undefined && !String(thanksMessage).trim()) return res.status(400).json({ error: 'A thank-you message is required.' });
   const put = 'UPDATE settings SET value = ? WHERE key = ?';
   if (collectMessage !== undefined) await db.run(put, String(collectMessage).trim(), 'collect_message');
   if (thanksMessage !== undefined) await db.run(put, String(thanksMessage).trim(), 'thanks_message');
+  if (surveyQuestion !== undefined) await db.run(put, String(surveyQuestion).trim(), 'survey_question');
   res.json({ ok: true });
 }));
 
@@ -469,13 +512,41 @@ app.get('/api/admin/winners', requireAdmin, route(async (req, res) => {
   });
 }));
 
+// ---------- admin: survey feedback ----------
+
+function getFeedback() {
+  return db.all(`SELECT p.name, p.email, f.answer, f.created_at AS answeredAt
+    FROM feedback f JOIN participants p ON p.id = f.participant_id ORDER BY f.created_at DESC`);
+}
+
+app.get('/api/admin/feedback', requireAdmin, route(async (req, res) => {
+  res.json({ question: await getSetting(db, 'survey_question'), feedback: await getFeedback() });
+}));
+
+// The same answers as a spreadsheet (opens in Excel; the BOM keeps Arabic intact).
+app.get('/api/admin/feedback.csv', requireAdmin, route(async (req, res) => {
+  const cell = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+  const rows = (await getFeedback()).map((f) => [f.answeredAt, f.name, f.email, f.answer].map(cell).join(','));
+  res.set('Content-Type', 'text/csv; charset=utf-8');
+  res.set('Content-Disposition', 'attachment; filename="event-feedback.csv"');
+  res.send('\uFEFF' + ['Answered at,Name,Email,Answer', ...rows].join('\r\n'));
+}));
+
 // Wipes every registration, check-in and drawn prize - for clearing test
-// data before the event. Stations and prize settings are kept. The body
-// must say { confirm: 'RESET' }, so it can't happen by accident.
+// data before the event. Stations and prize settings are kept. Needs the
+// reset password as well as an admin login.
+function samePassword(given, expected) {
+  const a = crypto.createHash('sha256').update(String(given || '')).digest();
+  const b = crypto.createHash('sha256').update(String(expected)).digest();
+  return crypto.timingSafeEqual(a, b);
+}
 app.post('/api/admin/reset', requireAdmin, route(async (req, res) => {
-  if ((req.body || {}).confirm !== 'RESET') return res.status(400).json({ error: 'Type RESET to confirm.' });
+  if (!samePassword((req.body || {}).password, RESET_PASSWORD)) {
+    return res.status(403).json({ error: 'Wrong reset password.' });
+  }
   await db.transaction(async (tx) => {
     await tx.run('DELETE FROM progress');
+    await tx.run('DELETE FROM feedback');
     await tx.run('DELETE FROM participants');
   });
   res.json({ ok: true });
@@ -489,6 +560,9 @@ app.post('/api/admin/checkin', requireAdmin, route(async (req, res) => {
   if (!milestone) return res.status(400).json({ error: 'Unknown milestone.' });
   if (milestone.order_index === 0) {
     return res.status(400).json({ error: 'The start point is marked automatically at registration.' });
+  }
+  if (milestone.survey) {
+    return res.status(400).json({ error: "The survey is answered on the attendee's own phone, not scanned." });
   }
 
   // The whole check-in - the scan, finishing with its rank and prize draw
@@ -525,6 +599,7 @@ app.get('/admin/dashboard', (req, res) => res.sendFile(path.join(__dirname, 'pub
 app.get('/admin/scan', (req, res) => res.sendFile(path.join(__dirname, 'public/admin/scan.html')));
 app.get('/admin/poster', (req, res) => res.sendFile(path.join(__dirname, 'public/admin/poster.html')));
 app.get('/admin/rewards', (req, res) => res.sendFile(path.join(__dirname, 'public/admin/rewards.html')));
+app.get('/admin/feedback', (req, res) => res.sendFile(path.join(__dirname, 'public/admin/feedback.html')));
 
 // a database hiccup answers with an error instead of crashing the server
 app.use((err, req, res, next) => {

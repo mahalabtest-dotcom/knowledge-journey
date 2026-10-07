@@ -89,7 +89,8 @@
     const res = await fetch('/api/admin/milestones');
     if (res.status === 401) { window.location.href = '/admin/login'; return; }
     const data = await res.json();
-    milestones = data.milestones.filter(m => m.order_index > 0 && m.order_index < data.milestones.length - 1);
+    // the survey is answered on the attendee's phone, so it isn't scanned
+    milestones = data.milestones.filter(m => m.order_index > 0 && m.order_index < data.milestones.length - 1 && !m.survey);
     // ⁧...⁩ isolates the Arabic as right-to-left, so its
     // punctuation (e.g. a closing bracket) stays on the correct side
     milestoneSelect.innerHTML = milestones.map((m, i) => {

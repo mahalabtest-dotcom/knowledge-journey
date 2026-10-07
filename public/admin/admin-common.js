@@ -18,7 +18,7 @@ function renderAdminNav(active) {
   nav.innerHTML = `
     <style>
       .admin-nav {
-        display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px;
+        display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px;
         max-width: 480px; margin: 0.9em auto 0.3em; padding: 4px;
         width: calc(100% - 2em);
         background: #fff; border-radius: 999px; box-shadow: 0 0 0 2px var(--line);
@@ -37,6 +37,7 @@ function renderAdminNav(active) {
       <a href="/admin/scan" data-key="scan">Scan</a>
       <a href="/admin/poster" data-key="poster">QR</a>
       <a href="/admin/rewards" data-key="rewards">Prizes</a>
+      <a href="/admin/feedback" data-key="feedback">Survey</a>
       <button id="logoutBtn">Exit</button>
     </div>
   `;

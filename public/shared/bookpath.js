@@ -405,7 +405,8 @@
         en.lines.forEach((t, k) => { y += k === 0 ? (rows.length ? en.size + 3 : en.size) : enStep; rows.push({ text: t, y, size: en.size, weight: 800, fill: ink }); });
         ar.lines.forEach((t, k) => { y += k === 0 ? ar.size + 9 : arStep; rows.push({ text: t, y, size: ar.size, weight: 700, fill: ink, rtl: true }); });
         // unvisited optional stops still get a chip, saying what they earn
-        const chipText = state === 'done' ? 'Visited' : state === 'next' ? 'Go here next' : m.optional ? '+1 extra book' : null;
+        // the survey is answered on the page itself, in a card above the journey
+        const chipText = state === 'done' ? 'Visited' : state === 'next' ? (m.survey ? 'Answer the question above' : 'Go here next') : m.optional ? '+1 extra book' : null;
         const chipY = y + 10;
         const top = p.y - (chipText ? chipY + 22 : y + 6) / 2;
 

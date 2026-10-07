@@ -87,6 +87,14 @@
         <span class="save-ok" id="collectOk">Saved!</span>
       </div>
     </div>
+    <div class="card reward-row">
+      <label for="surveyQuestion">Survey question (answered on the phone; answers are on the Survey page)</label>
+      <textarea id="surveyQuestion" rows="2"></textarea>
+      <div class="row-actions">
+        <button class="secondary" id="saveSurvey">Save</button>
+        <span class="save-ok" id="surveyOk">Saved!</span>
+      </div>
+    </div>
     <p class="muted section-sub" id="thanksSub">Everyone who finishes after the groups above gets a thank-you note.</p>
     <div class="card reward-row">
       <label for="thanksMessage">Thank-you note</label>
@@ -108,10 +116,10 @@
 
   <section>
     <h2>Before the event</h2>
-    <p class="muted section-sub">Clears every registration, check-in and prize, so the real event starts from 1st place again. Stations and prize settings are kept. This can't be undone.</p>
+    <p class="muted section-sub">Clears every registration, check-in and prize, so the real event starts from 1st place again. Stations and prize settings are kept. This can't be undone, so it needs the reset password.</p>
     <div class="card reward-row">
-      <label for="resetConfirm">Type RESET to confirm</label>
-      <input type="text" id="resetConfirm" autocomplete="off" autocapitalize="characters" />
+      <label for="resetConfirm">Reset password</label>
+      <input type="password" id="resetConfirm" autocomplete="off" />
       <div class="row-actions">
         <button class="danger" id="resetBtn">Clear all registrations</button>
         <span class="save-ok" id="resetOk">Cleared</span>
@@ -155,6 +163,7 @@
     renderPool(data.pool);
     document.getElementById('collectMessage').value = data.collectMessage;
     document.getElementById('thanksMessage').value = data.thanksMessage;
+    document.getElementById('surveyQuestion').value = data.surveyQuestion;
   }
 
   // The first tier (starting at rank 1) is the raffle-draw group.
@@ -244,6 +253,13 @@
     flashOk(document.getElementById('collectOk'));
   });
 
+  document.getElementById('saveSurvey').addEventListener('click', async () => {
+    const surveyQuestion = document.getElementById('surveyQuestion').value.trim();
+    if (!surveyQuestion) return;
+    await putJson('/api/admin/rewards/settings', { surveyQuestion });
+    flashOk(document.getElementById('surveyOk'));
+  });
+
   document.getElementById('saveThanks').addEventListener('click', async () => {
     const thanksMessage = document.getElementById('thanksMessage').value.trim();
     if (!thanksMessage) return;
@@ -310,10 +326,12 @@
     const input = document.getElementById('resetConfirm');
     const err = document.getElementById('resetErr');
     err.textContent = '';
+    if (!input.value) { err.textContent = 'Enter the reset password.'; return; }
+    if (!confirm('Clear every registration, check-in and prize? This cannot be undone.')) return;
     const res = await fetch('/api/admin/reset', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ confirm: input.value.trim().toUpperCase() }),
+      body: JSON.stringify({ password: input.value }),
     });
     if (!res.ok) { err.textContent = (await res.json()).error || 'Could not clear.'; return; }
     input.value = '';

@@ -210,6 +210,58 @@
     box.style.display = 'flex';
   }
 
+  // ---------- survey question ----------
+
+  // Once every other required stop is done, the survey stop is a question
+  // answered right here; submitting it completes the stop. The card is
+  // built once and left alone, so the 4-second poll never wipes a half-
+  // written answer.
+  let surveyShown = false;
+  function renderSurvey(survey) {
+    const box = document.getElementById('survey');
+    if (!survey || !survey.open) {
+      box.style.display = 'none';
+      box.innerHTML = '';
+      surveyShown = false;
+      return false;
+    }
+    if (surveyShown) return false;
+    surveyShown = true;
+    box.innerHTML = `
+      <div class="survey-kicker">Last step · Survey</div>
+      <label class="survey-q" for="surveyAnswer">${escapeHtml(survey.question)}</label>
+      <textarea id="surveyAnswer" rows="4" maxlength="2000" dir="auto" placeholder="Write your thoughts here"></textarea>
+      <div class="survey-err" id="surveyErr"></div>
+      <button id="surveySubmit">Submit</button>`;
+    box.style.display = 'block';
+    document.getElementById('surveySubmit').addEventListener('click', submitSurvey);
+    return true;
+  }
+
+  async function submitSurvey() {
+    const btn = document.getElementById('surveySubmit');
+    const err = document.getElementById('surveyErr');
+    const answer = document.getElementById('surveyAnswer').value.trim();
+    err.textContent = '';
+    if (!answer) { err.textContent = 'Please write a few words before submitting.'; return; }
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+    try {
+      const res = await fetch('/api/survey', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, answer }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not send your answer.');
+      render(data.participant);   // the stop completes: confetti and the message
+    } catch (e) {
+      err.textContent = e.message || 'Could not send your answer. Please try again.';
+      btn.disabled = false;
+      btn.textContent = 'Submit';
+    }
+  }
+
   // ---------- render / poll ----------
 
   function render(participant) {
@@ -226,6 +278,7 @@
     progressBadge.textContent = `${requiredDone}/${total}`;
     document.getElementById('stopsCount').textContent = `${requiredDone} of ${total} required visited`;
     renderTokens(participant.tokens, list);
+    const surveyAppeared = renderSurvey(participant.survey);
 
     const firstRender = lastCompletedCount === -1;
     const current = path.update(list);
@@ -260,6 +313,10 @@
     }
     if (participant.finishedAt && !lastFinished && !firstRender) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    // bring the question into view when it first appears
+    if (surveyAppeared) {
+      setTimeout(() => document.getElementById('survey').scrollIntoView({ behavior: firstRender ? 'auto' : 'smooth', block: 'center' }), firstRender ? 0 : 1600);
     }
     lastCompletedCount = done;
     lastFinished = Boolean(participant.finishedAt);

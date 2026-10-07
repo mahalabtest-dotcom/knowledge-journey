@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Survey Answers</title>
+<link rel="stylesheet" href="/shared/theme.css" />
+<style>
+  .wrap { max-width: 480px; margin: 0 auto; padding: 1em 1em 3em; }
+  .question { font-weight: 700; color: var(--maroon); margin: 0.2em 0 0.9em; }
+  .actions { display: flex; align-items: center; justify-content: space-between; gap: 0.8em; margin-bottom: 1em; }
+  .count { font-size: 0.9rem; color: var(--muted); }
+  .answer { padding: 0.9em 1em; margin-bottom: 0.6em; }
+  .answer-text { white-space: pre-wrap; word-break: break-word; margin: 0 0 0.5em; }
+  .answer-who { font-size: 0.78rem; color: var(--muted); }
+  .empty-state { text-align: center; padding: 1.5em 1em; color: var(--muted); font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Survey answers</h1>
+  <p class="question" id="question"></p>
+  <div class="actions">
+    <span class="count" id="count"></span>
+    <button class="secondary" id="csvBtn">Download (CSV)</button>
+  </div>
+  <div id="answers"></div>
+</div>
+
+<script src="/admin/admin-common.js"></script>
+<script>
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  async function load() {
+    const res = await fetch('/api/admin/feedback');
+    if (res.status === 401) { window.location.href = '/admin/login'; return; }
+    const data = await res.json();
+    document.getElementById('question').textContent = `"${data.question}"`;
+    const n = data.feedback.length;
+    document.getElementById('count').textContent = `${n} answer${n === 1 ? '' : 's'}, newest first`;
+    document.getElementById('answers').innerHTML = n
+      ? data.feedback.map((f) => `
+          <div class="card answer">
+            <p class="answer-text" dir="auto">${escapeHtml(f.answer)}</p>
+            <div class="answer-who">${escapeHtml(f.name)} · ${escapeHtml(f.email)} · ${new Date(f.answeredAt).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
+          </div>`).join('')
+      : '<div class="card empty-state">No answers yet.</div>';
+  }
+
+  // a spreadsheet of every answer (opens in Excel)
+  document.getElementById('csvBtn').addEventListener('click', () => { window.location.href = '/api/admin/feedback.csv'; });
+
+  (async () => {
+    if (!(await requireAdminAuth())) return;
+    renderAdminNav('feedback');
+    await load();
+    setInterval(load, 10000);
+  })();
+</script>
+</body>
+</html>

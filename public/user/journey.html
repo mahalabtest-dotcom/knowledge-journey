@@ -102,6 +102,18 @@
     display: inline-block; font-size: 0.72rem; font-weight: 700; color: var(--maroon);
     background: #f1e3ea; border-radius: 6px; padding: 0 6px; margin-left: 4px; vertical-align: 1px;
   }
+  /* the survey question, the last stop */
+  #survey { margin-bottom: 16px; border: 2px solid var(--mauve); }
+  .survey-kicker { font-weight: 700; color: var(--mauve); font-size: 0.85rem; }
+  .survey-q { display: block; font-weight: 800; font-size: 1.15rem; color: var(--navy); margin: 2px 0 10px; line-height: 1.3; }
+  #surveyAnswer {
+    width: 100%; font-family: inherit; font-size: 1rem; padding: 0.7em 0.8em; resize: vertical;
+    border-radius: 12px; border: 2px solid var(--line); background: #fff; color: var(--navy);
+  }
+  #surveyAnswer:focus { outline: none; border-color: var(--indigo); }
+  .survey-err { color: var(--maroon); font-size: 0.85rem; font-weight: 700; min-height: 1.2em; margin: 6px 0; }
+  #surveySubmit { width: 100%; }
+
   /* extra book tokens earned from optional stops */
   #tokens { align-items: center; gap: 12px; margin-bottom: 16px; padding: 14px 16px; border: 2px dashed var(--mauve); }
   .tokens-count { font-size: 1.6rem; flex: 0 0 auto; letter-spacing: -4px; }
@@ -188,6 +200,7 @@
 
   <div id="rewardSection" style="display:none;"></div>
   <div id="tokens" class="card" style="display:none;" role="status"></div>
+  <div id="survey" class="card" style="display:none;"></div>
 
   <div class="sheet-shadow">
     <div class="sheet" id="sheet">

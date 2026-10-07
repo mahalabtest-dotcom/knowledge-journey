@@ -131,6 +131,13 @@ CREATE TABLE IF NOT EXISTS pool_prizes (
   order_index INTEGER NOT NULL
 );
 
+-- Answers to the survey question, one per attendee.
+CREATE TABLE IF NOT EXISTS feedback (
+  participant_id TEXT PRIMARY KEY,
+  answer TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
 -- Small key/value settings: collect_message (how to collect a prize),
 -- thanks_message, and prize_rules (which version of the prize rules the
 -- tiers and pool were seeded for).
@@ -159,42 +166,48 @@ CREATE TABLE IF NOT EXISTS settings (
   await addColumn('milestones', 'optional', 'INTEGER NOT NULL DEFAULT 0');
   // 1 = the stand where attendees pick books and extra book tokens are used
   await addColumn('milestones', 'book_stand', 'INTEGER NOT NULL DEFAULT 0');
+  // 1 = completed by answering the survey question on the phone, not scanned
+  await addColumn('milestones', 'survey', 'INTEGER NOT NULL DEFAULT 0');
   // how many extra book tokens this person has already used at the book stand
   await addColumn('participants', 'tokens_used', 'INTEGER NOT NULL DEFAULT 0');
   await addColumn('reward_tiers', 'image', 'TEXT');
 
-  // The stages (version 2, set by the user 2026-10-07), in journey order.
+  // The stages (version 4, set by the user 2026-10-07), in journey order.
   // Seeded once; a database seeded for an earlier set of stages is switched
-  // over once. Stages that carry over keep their id (m1-m4), so progress
-  // on them is kept; progress on removed stages (m5-m7) is dropped. Admin
-  // edits to names are kept only until the next switch-over.
-  //   [id, title, Arabic title, optional, book stand]
+  // over once. Stages that carry over keep their id, so progress on them
+  // is kept; progress on removed stages is dropped. Version 3 merged Get
+  // Abstract (m8) and DEWA Smart Library (m9) into one stage, m8; a scan
+  // at either counts for it. Version 4 made the Survey (m11) a question
+  // answered on the phone instead of a scanned stage. Admin edits to names
+  // are kept only until the next switch-over.
+  //   [id, title, Arabic title, optional, book stand, survey]
   const stages = [
     ['start', 'Start', 'البداية', 0, 0],
     ['m2', 'Letter in 360: VR Experience', 'الرسائل بتقنية 360° – تجربة الواقع الافتراضي', 0, 0],
     ['m3', 'A Mark to Remember: Design Your Own Bookmark', 'علامة للذكرى: صمّم فاصل كتابك الخاص', 1, 0],
     ['m4', 'Letters (From To)', 'الرسائل (من – إلى)', 0, 0],
-    ['m8', 'Get Abstract', 'جِت أبستراكت: ملخّصات الكتب', 0, 0],
-    ['m9', 'DEWA Smart Library', 'مكتبة ديوا الذكية', 0, 0],
+    ['m8', 'Get Abstract & DEWA Smart Library', 'جِت أبستراكت ومكتبة ديوا الذكية', 0, 0],
     ['m10', 'The Panel Discussion', 'الجلسة الحوارية', 1, 0],
     ['m1', 'From DEWA Knowledge Centers to Your Bookshelf', 'من مراكز المعرفة في ديوا إلى مكتبتك', 0, 1],
-    ['m11', 'Survey', 'الاستبيان', 0, 0],
+    ['m11', 'Survey', 'الاستبيان', 0, 0, 1],
     ['finish', 'The End', 'النهاية', 0, 0],
   ];
   const stagesVersion = await db.get("SELECT value FROM settings WHERE key = 'stages'");
-  if (!stagesVersion || stagesVersion.value !== '2') {
+  if (!stagesVersion || stagesVersion.value !== '4') {
     await db.transaction(async (tx) => {
+      // the merged stage: a scan at the old DEWA Smart Library counts for it
+      await tx.run("UPDATE OR IGNORE progress SET milestone_id = 'm8' WHERE milestone_id = 'm9'");
       await tx.run('DELETE FROM milestones');
-      for (const [i, [id, title, titleAr, optional, bookStand]] of stages.entries()) {
+      for (const [i, [id, title, titleAr, optional, bookStand, survey = 0]] of stages.entries()) {
         const description = id === 'start' ? 'Every story starts on the first page.'
           : id === 'finish' ? 'You read the whole story - well done!' : null;
         await tx.run(
-          'INSERT INTO milestones (id, order_index, title, title_ar, description, icon, optional, book_stand) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)',
-          id, i, title, titleAr, description, optional, bookStand
+          'INSERT INTO milestones (id, order_index, title, title_ar, description, icon, optional, book_stand, survey) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)',
+          id, i, title, titleAr, description, optional, bookStand, survey
         );
       }
       await tx.run(`DELETE FROM progress WHERE milestone_id NOT IN (${stages.map(() => '?').join(', ')})`, ...stages.map((x) => x[0]));
-      await tx.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('stages', '2')");
+      await tx.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('stages', '4')");
     });
   }
 
@@ -209,6 +222,8 @@ CREATE TABLE IF NOT EXISTS settings (
   // Seeded once. A database seeded for an earlier version of the rules is
   // switched over once, clearing any prizes drawn under those rules; the
   // server then draws again for anyone already finished in tier 1.
+  await db.run("INSERT OR IGNORE INTO settings (key, value) VALUES ('survey_question', 'What did you think of the event? Share your thoughts.')");
+
   const COFFEE_IMAGE = '/shared/coffee-voucher.jpg';
   const rules = await db.get("SELECT value FROM settings WHERE key = 'prize_rules'");
   if (!rules || rules.value !== '3') {
