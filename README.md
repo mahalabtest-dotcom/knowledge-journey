@@ -17,6 +17,10 @@ staff check them in by scanning each attendee's personal QR code.
    attendee's books open live as staff check them in, and a little robot
    (modelled on DEWA's service robot) glides along the ribbon to the book
    just opened.
+   A **مفتاح المعرفة** tab on the right edge opens the treasure-box poster
+   (`public/shared/knowledge-key.jpg`, Arabic, shown exactly as supplied,
+   with its chest animated) - a side activity attendees can open and close
+   any time.
 3. **Check-in.** At each physical station, staff open `/admin/scan`, select
    which checkpoint they're staffing, and scan the QR code shown on the
    attendee's phone (`Show My Checkpoint Code` button on their journey page).

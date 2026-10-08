@@ -179,6 +179,87 @@
   #toast > div:only-child { border-radius: 12px; }
   @media (prefers-reduced-motion: reduce) { #toast { transition: opacity 0.3s ease; transform: translate(-50%, 0); } }
 
+  /* "مفتاح المعرفة" - the treasure-box side activity. A tab on the right
+     edge opens the user's poster (public/shared/knowledge-key.jpg, shown
+     exactly as supplied, Arabic only). Until it is opened once, the tab
+     shows a dot and nudges now and then. */
+  #keyTab {
+    position: fixed; right: 0; top: 34vh; z-index: 25;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    width: 62px; padding: 9px 4px 8px 6px; margin: 0;
+    background: var(--maroon); color: #fff; border: none; border-radius: 16px 0 0 16px;
+    box-shadow: -4px 6px 16px rgba(34, 28, 82, 0.25); transform: none;
+    font-family: inherit; font-size: 0.68rem; font-weight: 800; line-height: 1.15; text-align: center;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #keyTab:active { transform: translateX(2px); box-shadow: -2px 3px 8px rgba(34, 28, 82, 0.25); }
+  .kt-icon {
+    width: 34px; height: 34px; border-radius: 50%; background: var(--peach);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .kt-icon svg { width: 24px; height: 24px; }
+  .kt-dot {
+    position: absolute; top: 5px; left: 6px; width: 11px; height: 11px; border-radius: 50%;
+    background: var(--sun); box-shadow: 0 0 0 2px var(--maroon); display: none;
+  }
+  #keyTab.unseen .kt-dot { display: block; animation: ktDot 1.6s ease-in-out infinite; }
+  #keyTab.unseen { animation: ktNudge 3.2s ease-in-out infinite; }
+  @keyframes ktDot { 50% { transform: scale(1.35); } }
+  @keyframes ktNudge {
+    0%, 78%, 100% { transform: translateX(0); }
+    84% { transform: translateX(-8px); }
+    90% { transform: translateX(0); }
+    95% { transform: translateX(-4px); }
+  }
+
+  #keyModal {
+    position: fixed; inset: 0; z-index: 50; display: none;
+    background: rgba(34, 28, 82, 0.7); overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 14px;
+  }
+  #keyModal.open { display: block; }
+  .km-sheet { position: relative; max-width: 480px; margin: 0 auto; }
+  #keyClose {
+    position: absolute; top: 8px; right: 8px; z-index: 2; width: 40px; height: 40px; padding: 0;
+    border-radius: 50%; border: none; background: rgba(255, 255, 255, 0.92); color: var(--maroon);
+    font-size: 1.6rem; line-height: 40px; box-shadow: 0 3px 10px rgba(34, 28, 82, 0.25); transform: none;
+  }
+  .km-poster { position: relative; border-radius: 14px; overflow: hidden; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35); }
+  .km-poster img { display: block; width: 100%; height: auto; }
+  /* The chest, animated: a copy of just the chest area of the same image,
+     laid exactly over it with feathered edges, so it can "breathe" and
+     rattle without changing the poster. Numbers are that area's place in
+     the 1055x1491 image: x 340-715, y 1100-1320. */
+  .km-chest {
+    position: absolute; left: 32.23%; top: 73.78%; width: 35.55%; height: 14.76%;
+    background: url('/shared/knowledge-key.jpg') no-repeat;
+    background-size: 281.33% 677.73%; background-position: 50% 86.55%;
+    -webkit-mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 70%, transparent 100%);
+    mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 70%, transparent 100%);
+    transform-origin: 50% 88%;
+    animation: kmChest 4s ease-in-out infinite;
+  }
+  /* a golden shine sweeping across it */
+  .km-chest::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(105deg, transparent 35%, rgba(255, 236, 170, 0.75) 50%, transparent 65%);
+    background-size: 250% 100%; mix-blend-mode: overlay;
+    animation: kmShine 4s ease-in-out infinite;
+  }
+  @keyframes kmChest {
+    0%, 100% { transform: scale(1); }
+    30% { transform: scale(1.04); }
+    55% { transform: scale(1.01); }
+    62% { transform: scale(1.05) rotate(-2deg); }
+    67% { transform: scale(1.05) rotate(2deg); }
+    72% { transform: scale(1.05) rotate(-1.5deg); }
+    77% { transform: scale(1.04) rotate(0); }
+  }
+  @keyframes kmShine { 0%, 35% { background-position: 120% 0; } 70%, 100% { background-position: -20% 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    #keyTab.unseen, #keyTab.unseen .kt-dot, .km-chest, .km-chest::after { animation: none; }
+  }
+
   .confetti-piece {
     position: fixed; top: -12px; z-index: 40; pointer-events: none; border-radius: 2px;
     animation: fall linear forwards;
@@ -221,6 +302,22 @@
 </div>
 
 <div id="toast" role="status" aria-live="polite"></div>
+
+<button id="keyTab" class="unseen" aria-haspopup="dialog" aria-controls="keyModal">
+  <span class="kt-dot"></span>
+  <span class="kt-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="12" r="4.2" fill="none" stroke="#d9a21f" stroke-width="2.6"/><path d="M11 12 H21 M17.5 12 V15.5 M20.5 12 V14.5" fill="none" stroke="#d9a21f" stroke-width="2.6" stroke-linecap="round"/></svg></span>
+  <span dir="rtl" lang="ar">مفتاح المعرفة</span>
+</button>
+
+<div id="keyModal" role="dialog" aria-modal="true" aria-label="مفتاح المعرفة" lang="ar">
+  <div class="km-sheet">
+    <button id="keyClose" aria-label="إغلاق">×</button>
+    <div class="km-poster">
+      <img src="/shared/knowledge-key.jpg" alt="مفتاح المعرفة: في داخل هذا الصندوق كنز من المعرفة. الخطوة 1: ابحث داخل المكتبة. الخطوة 2: اعثر على المفتاح. الخطوة 3: افتح الصندوق. الخطوة 4: واربح الكتاب الموجود بداخله! ابحث عن المفتاح." />
+      <div class="km-chest" aria-hidden="true"></div>
+    </div>
+  </div>
+</div>
 
 <button id="qrFab">Show my code</button>
 

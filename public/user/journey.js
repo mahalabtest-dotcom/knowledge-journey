@@ -26,6 +26,33 @@
   closeQr.addEventListener('click', () => qrModal.classList.remove('open'));
   qrModal.addEventListener('click', (e) => { if (e.target === qrModal) qrModal.classList.remove('open'); });
 
+  // ---------- "مفتاح المعرفة" treasure-box poster ----------
+
+  // A side tab that opens the poster; it can be opened and closed any time.
+  // Until the first opening it shows a dot and nudges (remembered on this
+  // phone; if forgotten it just nudges again).
+  const keyTab = document.getElementById('keyTab');
+  const keyModal = document.getElementById('keyModal');
+  const KEY_SEEN = 'event_journey_key_seen';
+  try { if (localStorage.getItem(KEY_SEEN)) keyTab.classList.remove('unseen'); } catch (e) { /* nudge stays */ }
+  function openKey() {
+    keyModal.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    keyModal.scrollTop = 0;
+    keyTab.classList.remove('unseen');
+    try { localStorage.setItem(KEY_SEEN, '1'); } catch (e) { /* fine */ }
+    document.getElementById('keyClose').focus();
+  }
+  function closeKey() {
+    keyModal.classList.remove('open');
+    document.body.style.overflow = '';
+    keyTab.focus();
+  }
+  keyTab.addEventListener('click', openKey);
+  document.getElementById('keyClose').addEventListener('click', closeKey);
+  keyModal.addEventListener('click', (e) => { if (e.target === keyModal || e.target.classList.contains('km-sheet')) closeKey(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && keyModal.classList.contains('open')) closeKey(); });
+
   let lastCompletedCount = -1;
   let lastFinished = false;
   let lastRewardKey = null;

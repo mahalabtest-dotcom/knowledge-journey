@@ -312,6 +312,18 @@ How it is built (vector SVG generated in code, no image files):
   (`ROBOT`: green, ear blue) are not on the poster and are used only here.
   To swap the character, replace `mascot()` and its CSS; nothing else
   depends on its shape.
+- The **مفتاح المعرفة** side activity (added 2026-10-08): a fixed tab on the
+  right edge of the journey page (`#keyTab`) opens the user's Arabic
+  poster `public/shared/knowledge-key.jpg` full-screen (`#keyModal`). The
+  user asked for the poster to be shown **exactly as supplied - Arabic
+  only, nothing added or removed**; the only addition is that its chest is
+  animated. `.km-chest` is a copy of just the chest area of the same image
+  (x 340-715, y 1100-1320 of 1055x1491, as percentages) laid exactly over
+  it with a feathered radial mask; it breathes, rattles and gets a golden
+  shine sweep. If the poster image is replaced, re-measure that box. The
+  tab shows a dot and nudges until opened once (`event_journey_key_seen`
+  in localStorage). It is purely informational - nothing is scanned or
+  recorded.
 - Scenery goes in the two free pockets of each stretch (under the book
   just left, above the book coming up). Put new decorations there so they
   do not sit under a title or the ribbon.
