@@ -8,7 +8,8 @@ staff check them in by scanning each attendee's personal QR code.
 ## How it works
 
 1. **Registration.** A generic QR code (printed or displayed at the entrance)
-   points every attendee to `/register`. They enter their name and email and
+   points every attendee to `/register`. They enter their name - which stays on their own phone, never sent or
+   stored online - and
    land on `/journey`, their personal journey page.
 2. **The journey.** The page shows nine books on a winding bookmark ribbon
    (Start → the seven stages → The End), each named in English and
@@ -228,7 +229,7 @@ the journey, dashboard and scanner all follow the `milestones` table.
 ## Security notes for the event
 
 - The admin password is shared by all staff - anyone with it can see every
-  attendee's name and email and mark check-ins. Treat it like a door code.
+  attendee's progress and mark check-ins. Treat it like a door code.
 - An attendee's personal QR code is their unique identifier. If someone
   photographs another attendee's code, they could check that person in
   remotely - fine for a casual event, but avoid displaying anyone's QR code
@@ -236,8 +237,12 @@ the journey, dashboard and scanner all follow the `milestones` table.
 - There's no way to "undo" a check-in from the UI today; if staff scan the
   wrong milestone, you'd need to clear it directly in the database (table
   `progress`) or ask Claude Code to add an "undo" button before the event.
-- Hosted, attendee names and emails are stored in Turso (and pass through
-  Render). Check that your organisation allows that for its events.
+- **No names or emails are stored online.** The name typed at registration
+  is kept only on the attendee's own phone (for "Hi, Sara"); emails aren't
+  collected. The server and Turso know each attendee only by a number
+  (#0427) and their progress, prize and survey answer. Staff screens and
+  the survey CSV show those numbers; the prize card on the phone shows the
+  number too, so reception can match it.
 
 ## Resetting between a test run and the real event
 

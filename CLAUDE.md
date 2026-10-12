@@ -68,7 +68,8 @@ data/event.db  Local SQLite file, laptop only (gitignored).
 
 public/
   user/         Attendee-facing pages
-    register.html   Name + email form -> POST /api/register
+    register.html   Name form; the name is kept in this phone's
+                       localStorage only; POST /api/register sends nothing
     journey.html     The journey page (shell + styles)
     journey.js       All the logic: fetch state, update the books,
                        poll every 4s, confetti, QR modal, rewards
@@ -96,7 +97,9 @@ public/
 
 See `db.js` for the exact schema. Core tables:
 
-- `participants` - id, name, email, a random `token` (this is what's
+- `participants` - id, `number` (the anonymous attendee number, shown as
+  #0427 by `attendeeLabel()`), name and email (**always empty** - see
+  Privacy below), a random `token` (this is what's
   encoded in the attendee's personal QR code and is their only
   credential), `created_at`, `finished_at`, plus the reward-tracking
   columns below.
@@ -222,6 +225,21 @@ the button only uncovers it (a short "Drawing…" pause, confetti, then the
 prize card). The phone remembers the reveal in localStorage
 (`event_journey_revealed` = the token), so a reload shows the prize
 directly; if that is lost, the button simply shows again.
+
+## Privacy: no names or emails online (set by the user 2026-10-12)
+
+The user does not want attendees' names stored online. The name typed at
+registration is kept only in the phone's localStorage
+(`event_journey_name`) and used for "Hi, Sara"; emails are not collected.
+`POST /api/register` takes no body and assigns the next `number`. Every
+API response and staff screen (Players, Prizes, Survey, scanner, survey
+CSV) identifies attendees as "Attendee #0427"; the phone shows its own
+number under the greeting, on the QR card and on the prize card so
+reception can match it. `participants.name`/`email` stay in the schema
+(NOT NULL, written as '') only because SQLite can't easily drop them; a
+one-time migration (`privacy` setting = '1') blanked names stored before
+this. **Do not add any field that sends a name, email or other personal
+detail to the server** without the user's say-so.
 
 ## Request flow worth knowing
 

@@ -66,6 +66,11 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// Attendees are known only by number (names stay on their own phone).
+function attendeeLabel(p) {
+  return '#' + String(p.number || 0).padStart(4, '0');
+}
+
 // A station is any stage between the automatic start and finish.
 function isStation(m, milestones) {
   return m.order_index > 0 && m.order_index < milestones.length - 1;
@@ -184,7 +189,8 @@ async function participantView(q, p) {
   ]);
   return {
     id: p.id,
-    name: p.name,
+    number: p.number,
+    label: attendeeLabel(p),
     token: p.token,
     createdAt: p.created_at,
     finishedAt: p.finished_at,
@@ -261,20 +267,17 @@ async function drawMissingPrizes() {
 
 // ---------- attendee API ----------
 
+// Registration takes no personal details: the attendee's name is kept on
+// their own phone only, and emails aren't collected. The server hands out
+// a token (the QR code) and the next attendee number.
 app.post('/api/register', route(async (req, res) => {
-  const { name, email } = req.body || {};
-  if (!name || !name.trim() || !email || !email.trim()) {
-    return res.status(400).json({ error: 'Name and email are required.' });
-  }
-  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-  if (!emailOk) return res.status(400).json({ error: 'Please enter a valid email.' });
-
   const id = uuidv4();
   const token = uuidv4();
   await db.transaction(async (tx) => {
+    const number = (await tx.get('SELECT COALESCE(MAX(number), 0) + 1 AS n FROM participants')).n;
     await tx.run(
-      'INSERT INTO participants (id, name, email, token, created_at) VALUES (?, ?, ?, ?, ?)',
-      id, name.trim(), email.trim().toLowerCase(), token, new Date().toISOString()
+      "INSERT INTO participants (id, name, email, token, created_at, number) VALUES (?, '', '', ?, ?, ?)",
+      id, token, new Date().toISOString(), number
     );
     const start = (await getMilestones(tx))[0];
     if (start) await completeMilestone(tx, id, start.id);
@@ -391,8 +394,7 @@ app.get('/api/admin/participants', requireAdmin, route(async (req, res) => {
 
   const result = participants.map((p) => ({
     id: p.id,
-    name: p.name,
-    email: p.email,
+    label: attendeeLabel(p),
     token: p.token,
     createdAt: p.created_at,
     finishedAt: p.finished_at,
@@ -485,8 +487,7 @@ app.put('/api/admin/rewards/settings', requireAdmin, route(async (req, res) => {
 
 app.get('/api/admin/winners', requireAdmin, route(async (req, res) => {
   const finisher = (p) => ({
-    name: p.name,
-    email: p.email,
+    label: attendeeLabel(p),
     finishRank: p.finish_rank,
     finishedAt: p.finished_at,
     prizeLabel: p.prize_label,
@@ -514,9 +515,10 @@ app.get('/api/admin/winners', requireAdmin, route(async (req, res) => {
 
 // ---------- admin: survey feedback ----------
 
-function getFeedback() {
-  return db.all(`SELECT p.name, p.email, f.answer, f.created_at AS answeredAt
+async function getFeedback() {
+  const rows = await db.all(`SELECT p.number, f.answer, f.created_at AS answeredAt
     FROM feedback f JOIN participants p ON p.id = f.participant_id ORDER BY f.created_at DESC`);
+  return rows.map((r) => ({ label: attendeeLabel(r), answer: r.answer, answeredAt: r.answeredAt }));
 }
 
 app.get('/api/admin/feedback', requireAdmin, route(async (req, res) => {
@@ -526,10 +528,10 @@ app.get('/api/admin/feedback', requireAdmin, route(async (req, res) => {
 // The same answers as a spreadsheet (opens in Excel; the BOM keeps Arabic intact).
 app.get('/api/admin/feedback.csv', requireAdmin, route(async (req, res) => {
   const cell = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
-  const rows = (await getFeedback()).map((f) => [f.answeredAt, f.name, f.email, f.answer].map(cell).join(','));
+  const rows = (await getFeedback()).map((f) => [f.answeredAt, f.label, f.answer].map(cell).join(','));
   res.set('Content-Type', 'text/csv; charset=utf-8');
   res.set('Content-Disposition', 'attachment; filename="event-feedback.csv"');
-  res.send('\uFEFF' + ['Answered at,Name,Email,Answer', ...rows].join('\r\n'));
+  res.send('\uFEFF' + ['Answered at,Attendee,Answer', ...rows].join('\r\n'));
 }));
 
 // Wipes every registration, check-in and drawn prize - for clearing test

@@ -43,7 +43,7 @@
     <div class="card stat-card"><div class="num" id="statAvg">-</div><div class="muted">Avg. stops</div></div>
   </div>
 
-  <input type="text" id="searchBox" placeholder="Search by name or email" />
+  <input type="text" id="searchBox" placeholder="Search by attendee number" inputmode="numeric" />
 
   <div id="rows"></div>
 </div>
@@ -74,8 +74,7 @@
       card.innerHTML = `
         <div class="p-top">
           <div>
-            <div class="p-name">${escapeHtml(p.name)}</div>
-            <div class="p-email">${escapeHtml(p.email)}</div>
+            <div class="p-name">Attendee ${escapeHtml(p.label)}</div>
           </div>
           ${p.finishedAt ? '<span class="badge gold">Finished</span>' : '<span class="badge forest">In progress</span>'}
         </div>
@@ -110,12 +109,12 @@
     document.getElementById('statAvg').textContent = avg;
 
     const q = document.getElementById('searchBox').value.toLowerCase();
-    render(q ? allParticipants.filter((p) => p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q)) : allParticipants);
+    render(q ? allParticipants.filter((p) => p.label.includes(q)) : allParticipants);
   }
 
   document.getElementById('searchBox').addEventListener('input', (e) => {
     const q = e.target.value.toLowerCase();
-    render(allParticipants.filter((p) => p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q)));
+    render(allParticipants.filter((p) => p.label.includes(q)));
   });
 
   (async () => {

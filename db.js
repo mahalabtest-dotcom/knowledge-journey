@@ -168,6 +168,8 @@ CREATE TABLE IF NOT EXISTS settings (
   await addColumn('milestones', 'book_stand', 'INTEGER NOT NULL DEFAULT 0');
   // 1 = completed by answering the survey question on the phone, not scanned
   await addColumn('milestones', 'survey', 'INTEGER NOT NULL DEFAULT 0');
+  // the anonymous attendee number shown as #0427 - names are never stored
+  await addColumn('participants', 'number', 'INTEGER');
   // how many extra book tokens this person has already used at the book stand
   await addColumn('participants', 'tokens_used', 'INTEGER NOT NULL DEFAULT 0');
   await addColumn('reward_tiers', 'image', 'TEXT');
@@ -222,6 +224,20 @@ CREATE TABLE IF NOT EXISTS settings (
   // Seeded once. A database seeded for an earlier version of the rules is
   // switched over once, clearing any prizes drawn under those rules; the
   // server then draws again for anyone already finished in tier 1.
+  // Privacy (set by the user 2026-10-12): names stay on the attendee's own
+  // phone and emails aren't collected, so the database holds no names or
+  // emails. Once, blank any stored before that and number those rows.
+  const privacy = await db.get("SELECT value FROM settings WHERE key = 'privacy'");
+  if (!privacy || privacy.value !== '1') {
+    await db.transaction(async (tx) => {
+      const rows = await tx.all('SELECT id FROM participants WHERE number IS NULL ORDER BY created_at');
+      let next = (await tx.get('SELECT COALESCE(MAX(number), 0) AS n FROM participants')).n;
+      for (const r of rows) await tx.run('UPDATE participants SET number = ? WHERE id = ?', ++next, r.id);
+      await tx.run("UPDATE participants SET name = '', email = ''");
+      await tx.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('privacy', '1')");
+    });
+  }
+
   await db.run("INSERT OR IGNORE INTO settings (key, value) VALUES ('survey_question', 'What did you think of the event? Share your thoughts.')");
 
   const COFFEE_IMAGE = '/shared/coffee-voucher.jpg';

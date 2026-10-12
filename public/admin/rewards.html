@@ -271,7 +271,7 @@
     return `
       <div class="winner-row">
         <div>
-          <div class="winner-name">${escapeHtml(w.name)}</div>
+          <div class="winner-name">Attendee ${escapeHtml(w.label)}</div>
           <div class="winner-sub">${ordinal(w.finishRank)} · ${fmtTime(w.finishedAt)}</div>
         </div>
         <div class="winner-reward">${right}</div>
@@ -299,7 +299,7 @@
       const winner = group.people.find((w) => w.grand);
       const grand = data.pool.find((x) => x.grand);
       document.getElementById('grandStatus').innerHTML = winner
-        ? `🏆 The ${escapeHtml(winner.prizeLabel)} went to <strong>${escapeHtml(winner.name)}</strong> (${ordinal(winner.finishRank)}).`
+        ? `🏆 The ${escapeHtml(winner.prizeLabel)} went to <strong>attendee ${escapeHtml(winner.label)}</strong> (${ordinal(winner.finishRank)}).`
         : grand ? `The ${escapeHtml(grand.label)} hasn't been won yet.` : '';
     }
 

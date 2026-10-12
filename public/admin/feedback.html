@@ -44,7 +44,7 @@
       ? data.feedback.map((f) => `
           <div class="card answer">
             <p class="answer-text" dir="auto">${escapeHtml(f.answer)}</p>
-            <div class="answer-who">${escapeHtml(f.name)} · ${escapeHtml(f.email)} · ${new Date(f.answeredAt).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
+            <div class="answer-who">Attendee ${escapeHtml(f.label)} · ${new Date(f.answeredAt).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
           </div>`).join('')
       : '<div class="card empty-state">No answers yet.</div>';
   }

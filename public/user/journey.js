@@ -1,5 +1,8 @@
 (function () {
   const STORAGE_KEY = 'event_journey_token';
+  // the attendee's name lives only on this phone (see register.html)
+  let myName = '';
+  try { myName = localStorage.getItem('event_journey_name') || ''; } catch (e) { /* no name, just a greeting */ }
   const token = localStorage.getItem(STORAGE_KEY);
   if (!token) {
     window.location.href = '/register';
@@ -112,6 +115,9 @@
 
   // ---------- rewards ----------
 
+  // shown on every prize card, so reception can match it on their list
+  let myLabel = '';
+
   function rewardCard({ kicker, title, label, image, lines, button, foot }) {
     rewardSection.innerHTML = `
       <div class="reward">
@@ -123,7 +129,7 @@
           ${(lines || []).filter(Boolean).map((l) => `<p class="reward-desc">${escapeHtml(l)}</p>`).join('')}
           ${button ? `<button id="revealBtn">${escapeHtml(button)}</button>` : ''}
         </div>
-        <div class="reward-foot">${escapeHtml(foot || 'Thank you for taking part')}</div>
+        <div class="reward-foot">${escapeHtml(foot || 'Thank you for taking part')}${myLabel ? ` · Attendee ${escapeHtml(myLabel)}` : ''}</div>
       </div>
     `;
     const btn = document.getElementById('revealBtn');
@@ -301,7 +307,10 @@
     // any stop visited, required or optional, gets confetti and a message
     const done = list.filter((m) => isStop(m) && m.completed).length;
 
-    greeting.textContent = `Hi, ${participant.name.split(' ')[0]}`;
+    greeting.textContent = myName ? `Hi, ${myName.split(' ')[0]}` : 'Hi there';
+    document.getElementById('attendeeNo').textContent = `Attendee ${participant.label}`;
+    document.getElementById('qrNo').textContent = participant.label;
+    myLabel = participant.label;
     progressBadge.textContent = `${requiredDone}/${total}`;
     document.getElementById('stopsCount').textContent = `${requiredDone} of ${total} required visited`;
     renderTokens(participant.tokens, list);

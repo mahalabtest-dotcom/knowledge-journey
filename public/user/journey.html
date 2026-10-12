@@ -15,6 +15,7 @@
   }
   .festival { font-weight: 800; color: var(--maroon); font-size: 0.82rem; line-height: 1.25; }
   .top-bar h1 { margin: 2px 0 0; font-size: 1.7rem; line-height: 1.15; word-break: break-word; }
+  .attendee-no { font-weight: 700; color: var(--muted); font-size: 0.85rem; margin-top: 2px; }
   .count {
     flex: 0 0 auto; background: var(--indigo); color: #fff; border-radius: 14px;
     padding: 7px 13px; text-align: center; line-height: 1.1;
@@ -275,6 +276,7 @@
     <div>
       <div class="festival">Reading &amp; Knowledge Festival</div>
       <h1 id="greeting">Loading…</h1>
+      <div class="attendee-no" id="attendeeNo"></div>
     </div>
     <div class="count"><b id="progressBadge">0/0</b><span>stops</span></div>
   </div>
@@ -326,6 +328,7 @@
     <h3>Your code</h3>
     <p class="muted" style="margin-top:0;">Show this to the host at each stop. They scan it and your next book opens.</p>
     <img id="qrImg" alt="Your personal QR code" />
+    <div class="attendee-no" id="qrNo" style="margin-top:0.6em;font-size:1rem;"></div>
     <div style="margin-top:1.2em;">
       <button class="secondary" id="closeQr">Close</button>
     </div>

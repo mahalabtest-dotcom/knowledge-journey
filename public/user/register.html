@@ -12,7 +12,8 @@
   #heroBook { display: block; width: 170px; height: auto; margin: 0 auto 6px; }
   .festival { font-weight: 800; color: var(--maroon); font-size: 1.15rem; line-height: 1.25; text-align: center; }
   .sheet h1 { font-size: 1.8rem; text-align: center; margin: 14px 0 4px; }
-  .lede { margin: 0 0 18px; text-align: center; }
+  .lede { margin: 0 0 8px; text-align: center; }
+  .privacy { margin: 0 0 18px; text-align: center; font-size: 0.82rem; color: var(--muted); }
   form { display: flex; flex-direction: column; gap: 14px; }
   label { font-weight: 700; font-size: 0.9rem; margin-bottom: 4px; display: block; }
   #submitBtn { margin-top: 6px; }
@@ -28,14 +29,11 @@
       <div class="festival">Reading &amp; Knowledge Festival</div>
       <h1>Start your journey</h1>
       <p class="lede">Add your name to get your own journey. Every stop you visit at the festival opens a new book.</p>
+      <p class="privacy">Your name stays on this phone only - it isn't sent or stored online.</p>
       <form id="regForm">
         <div>
           <label for="name">Your name</label>
           <input type="text" id="name" name="name" placeholder="Jordan Rivera" autocomplete="name" required />
-        </div>
-        <div>
-          <label for="email">Your email</label>
-          <input type="email" id="email" name="email" placeholder="you@example.com" autocomplete="email" required />
         </div>
         <div id="formError" class="error-text" style="display:none;"></div>
         <button type="submit" id="submitBtn">Start my journey</button>
@@ -47,6 +45,8 @@
 <script src="/shared/bookpath.js"></script>
 <script>
   const STORAGE_KEY = 'event_journey_token';
+  // The name is kept on this phone only; the server never receives it.
+  const NAME_KEY = 'event_journey_name';
 
   // If already registered on this device, skip straight to the journey.
   if (localStorage.getItem(STORAGE_KEY)) {
@@ -68,17 +68,14 @@
     submitBtn.innerHTML = '<span class="spinner"></span> Starting…';
 
     const name = document.getElementById('name').value.trim();
-    const email = document.getElementById('email').value.trim();
 
     try {
-      const res = await fetch('/api/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email }),
-      });
+      // nothing personal goes to the server - it only hands out a token and number
+      const res = await fetch('/api/register', { method: 'POST' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Something went wrong. Try again.');
       localStorage.setItem(STORAGE_KEY, data.token);
+      localStorage.setItem(NAME_KEY, name);
       window.location.href = '/journey';
     } catch (err) {
       errorBox.textContent = err.message;

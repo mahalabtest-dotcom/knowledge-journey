@@ -116,7 +116,7 @@
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Check-in failed');
-      const name = data.participant.name;
+      const name = 'Attendee ' + data.participant.label;
       // at the book stand: how many books to hand over now
       const b = data.books;
       const books = !b ? ''
